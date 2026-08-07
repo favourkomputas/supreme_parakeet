@@ -17,18 +17,24 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "trades", "asset_in", existing_type=sa.String(length=32), type_=sa.String(255)
-    )
-    op.alter_column(
-        "trades", "asset_out", existing_type=sa.String(length=32), type_=sa.String(255)
-    )
+    # SQLite does not support ALTER COLUMN ... TYPE.  Alembic's batch mode
+    # recreates the table with the new definition and copies the existing
+    # rows, while emitting regular ALTER statements on databases that support
+    # them.  This is important for the default SQLite deployment on Railway.
+    with op.batch_alter_table("trades") as batch_op:
+        batch_op.alter_column(
+            "asset_in", existing_type=sa.String(length=32), type_=sa.String(255)
+        )
+        batch_op.alter_column(
+            "asset_out", existing_type=sa.String(length=32), type_=sa.String(255)
+        )
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "trades", "asset_out", existing_type=sa.String(length=255), type_=sa.String(32)
-    )
-    op.alter_column(
-        "trades", "asset_in", existing_type=sa.String(length=255), type_=sa.String(32)
-    )
+    with op.batch_alter_table("trades") as batch_op:
+        batch_op.alter_column(
+            "asset_out", existing_type=sa.String(length=255), type_=sa.String(32)
+        )
+        batch_op.alter_column(
+            "asset_in", existing_type=sa.String(length=255), type_=sa.String(32)
+        )
