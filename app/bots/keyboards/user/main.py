@@ -1,0 +1,245 @@
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
+
+
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="📈 Copytrade"),
+                KeyboardButton(text="🤖 Autotrade"),
+            ],
+            [
+                KeyboardButton(text="📊 Live Charts"),
+                KeyboardButton(text="💼 Wallet"),
+            ],
+            [
+                KeyboardButton(text="📖 Bot Guide"),
+                KeyboardButton(text="🔑 Import Wallet"),
+                KeyboardButton(text="⚙️ Settings"),
+            ],
+            [
+                KeyboardButton(text="⏰ Auto Deposit")
+            ],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def continue_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Continue ➡️", callback_data="user:continue")]
+        ]
+    )
+
+
+def back_to_main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")]
+        ]
+    )
+
+
+def wallet_actions_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Buy", callback_data="wallet:buy"),
+                InlineKeyboardButton(text="Sell", callback_data="wallet:sell"),
+            ],
+            [InlineKeyboardButton(text="Transfer", callback_data="wallet:transfer")],
+        ]
+    )
+
+
+def trade_chain_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="SOL", callback_data="trade:chain:SOL")],
+            [InlineKeyboardButton(text="BNB", callback_data="trade:chain:BNB")],
+            [InlineKeyboardButton(text="ETH", callback_data="trade:chain:ETH")],
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
+
+
+def transfer_chain_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="SOL", callback_data="transfer:chain:SOL")],
+            [InlineKeyboardButton(text="BNB", callback_data="transfer:chain:BNB")],
+            [InlineKeyboardButton(text="ETH", callback_data="transfer:chain:ETH")],
+            [InlineKeyboardButton(text="Cancel", callback_data="transfer:cancel")],
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
+
+
+def transfer_confirmation_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Confirm Withdrawal", callback_data="transfer:confirm")],
+            [InlineKeyboardButton(text="Cancel", callback_data="transfer:cancel")],
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
+
+
+def transfer_input_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Cancel", callback_data="transfer:cancel")],
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
+
+
+def copytrade_keyboard(enabled: bool) -> InlineKeyboardMarkup:
+    address_label = "✏️ Change Address" if enabled else "➕ Add Address"
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=address_label,
+                callback_data="copytrade:enter",
+            )
+        ]
+    ]
+    if enabled:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🛑 Stop Copying",
+                    callback_data="copytrade:stop",
+                )
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def copytrade_input_keyboard(enabled: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if enabled:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🛑 Stop Copying",
+                    callback_data="copytrade:stop",
+                )
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def autotrade_keyboard(enabled: bool) -> InlineKeyboardMarkup:
+    state_label = "🔴 Disable" if enabled else "🟢 Enable"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=state_label, callback_data="autotrade:toggle"
+                ),
+                InlineKeyboardButton(text="⛓ Chain", callback_data="autotrade:chain"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💵 Max Amount", callback_data="autotrade:edit:maximum_trade_amount"
+                ),
+                InlineKeyboardButton(
+                    text="🔢 Daily Trades", callback_data="autotrade:edit:maximum_daily_trades"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎚 Slippage", callback_data="autotrade:edit:slippage"
+                ),
+                InlineKeyboardButton(
+                    text="🧠 Strategy", callback_data="autotrade:strategy"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎯 Take Profit", callback_data="autotrade:edit:take_profit"
+                ),
+                InlineKeyboardButton(
+                    text="🛡 Stop Loss", callback_data="autotrade:edit:stop_loss"
+                ),
+            ],
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
+
+
+def chain_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🟣 SOL Mainnet", callback_data="autotrade:chain:solana"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔵 ETH Mainnet", callback_data="autotrade:chain:ethereum"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🟡 BNB Mainnet", callback_data="autotrade:chain:bnb"
+                )
+            ],
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="user:autotrade")],
+        ]
+    )
+
+
+def strategy_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Conservative", callback_data="autotrade:strategy:conservative"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Balanced", callback_data="autotrade:strategy:balanced"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Aggressive", callback_data="autotrade:strategy:aggressive"
+                )
+            ],
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="user:autotrade")],
+        ]
+    )
+
+
+def auto_deposit_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="👤 SOL Mainnet", callback_data="deposit:solana"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👤 ETH Mainnet", callback_data="deposit:ethereum"
+                )
+            ],
+            [
+                InlineKeyboardButton(text="👤 BNB Mainnet", callback_data="deposit:bnb")
+            ],
+            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
