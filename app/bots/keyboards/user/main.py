@@ -22,9 +22,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="🔑 Import Wallet"),
                 KeyboardButton(text="⚙️ Settings"),
             ],
-            [
-                KeyboardButton(text="⏰ Auto Deposit")
-            ],
+            [KeyboardButton(text="⏰ Auto Deposit")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -47,14 +45,103 @@ def back_to_main_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def wallet_import_method_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Recovery Phrase", callback_data="wallet_import:recovery_phrase"
+                ),
+                InlineKeyboardButton(
+                    text="Private Key", callback_data="wallet_import:private_key"
+                ),
+            ]
+        ]
+    )
+
+
+def settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Account/Wallet", callback_data="settings:account"
+                ),
+                InlineKeyboardButton(
+                    text="Notification/Alert", callback_data="settings:notifications"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Trading/Network", callback_data="settings:trading"
+                )
+            ],
+        ]
+    )
+
+
+def back_to_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Back", callback_data="user:settings")]
+        ]
+    )
+
+
+def notifications_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="← Back", callback_data="user:settings"),
+                InlineKeyboardButton(text="↻ Refresh", callback_data="settings:notifications"),
+            ]
+        ]
+    )
+
+
+def trading_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="← Back", callback_data="user:settings")],
+            [InlineKeyboardButton(text="Buy/Sell settings", callback_data="settings:buy_sell")],
+            [InlineKeyboardButton(text="Copytrading/Autotrading settings", callback_data="settings:copy_auto")],
+        ]
+    )
+
+
+def settings_return_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ Settings", callback_data="user:settings")]
+        ]
+    )
+
+
 def wallet_actions_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Buy", callback_data="wallet:buy"),
-                InlineKeyboardButton(text="Sell", callback_data="wallet:sell"),
+                InlineKeyboardButton(
+                    text="🔄 Refresh Balance", callback_data="user:wallet"
+                )
             ],
-            [InlineKeyboardButton(text="Transfer", callback_data="wallet:transfer")],
+            [
+                InlineKeyboardButton(text="🛒 Buy", callback_data="wallet:buy"),
+                InlineKeyboardButton(text="💰 Sell", callback_data="wallet:sell"),
+            ],
+            [InlineKeyboardButton(text="🔄 Transfer", callback_data="wallet:transfer")],
+        ]
+    )
+
+
+def insufficient_transfer_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⬅️ Back", callback_data="user:wallet"),
+                InlineKeyboardButton(text="Refresh", callback_data="wallet:transfer"),
+            ],
+            [InlineKeyboardButton(text="Wallet", callback_data="user:wallet")],
         ]
     )
 
@@ -102,26 +189,18 @@ def transfer_input_keyboard() -> InlineKeyboardMarkup:
 
 
 def copytrade_keyboard(enabled: bool) -> InlineKeyboardMarkup:
-    address_label = "✏️ Change Address" if enabled else "➕ Add Address"
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=address_label,
-                callback_data="copytrade:enter",
-            )
-        ]
-    ]
-    if enabled:
-        rows.append(
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="🛑 Stop Copying",
-                    callback_data="copytrade:stop",
-                )
-            ]
-        )
-    rows.append([InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+                InlineKeyboardButton(text="Stop all ⏹", callback_data="copytrade:stop_all"),
+                InlineKeyboardButton(text="Start all ▶️", callback_data="copytrade:start_all"),
+            ],
+            [
+                InlineKeyboardButton(text="Back", callback_data="copytrade:enter"),
+                InlineKeyboardButton(text="Main Menu", callback_data="user:home"),
+            ],
+        ]
+    )
 
 
 def copytrade_input_keyboard(enabled: bool) -> InlineKeyboardMarkup:
@@ -241,5 +320,15 @@ def auto_deposit_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="👤 BNB Mainnet", callback_data="deposit:bnb")
             ],
             [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
+        ]
+    )
+
+
+def auto_deposit_interval_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="12 Hours", callback_data="auto_deposit:set:12")],
+            [InlineKeyboardButton(text="24 Hours", callback_data="auto_deposit:set:24")],
+            [InlineKeyboardButton(text="🛑 Turn Off", callback_data="auto_deposit:off")],
         ]
     )

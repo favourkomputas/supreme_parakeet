@@ -62,6 +62,14 @@ class CopytradeService:
         await self.session.commit()
         return setting
 
+    async def start(self, user_id: int) -> CopytradeSetting:
+        setting = await self.get(user_id)
+        if not setting.wallet_address:
+            raise ValueError("Add a wallet address before starting copytrade")
+        setting.enabled = True
+        await self.session.commit()
+        return setting
+
     async def set_max_trade_amount(
         self, user_id: int, amount: Decimal
     ) -> CopytradeSetting:

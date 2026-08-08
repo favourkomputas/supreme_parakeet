@@ -11,7 +11,7 @@ cryptography>=44,<46
 web3>=7.6,<8.0
 solana>=0.36,<1.0
 solders>=0.23,<1.0
+bip-utils>=2.9,<3.0
 httpx>=0.28,<1.0
 pytest>=8.3,<9.0
 pytest-asyncio>=0.25,<1.0
-

@@ -42,6 +42,7 @@ def registered_user_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✏️ Edit Positions", callback_data=f"admin:trades:{user_id}")],
+            [InlineKeyboardButton(text="🔢 Edit Position Count", callback_data=f"admin:position_count:{user_id}")],
             [InlineKeyboardButton(text="✏️ Edit SOL", callback_data=f"admin:balance_asset:{user_id}:SOL")],
             [InlineKeyboardButton(text="✏️ Edit BNB", callback_data=f"admin:balance_asset:{user_id}:BNB")],
             [InlineKeyboardButton(text="✏️ Edit ETH", callback_data=f"admin:balance_asset:{user_id}:ETH")],

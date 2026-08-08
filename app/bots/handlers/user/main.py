@@ -2,37 +2,52 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, ForceReply, Message
+from aiogram.types import CallbackQuery, ForceReply, FSInputFile, Message
+from bip_utils import Bip39MnemonicValidator, Bip39SeedGenerator, Bip44, Bip44Coins
+from solders.keypair import Keypair
+from web3 import Web3
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bots.keyboards.user.main import (
     auto_deposit_keyboard,
+    auto_deposit_interval_keyboard,
     autotrade_keyboard,
+    back_to_settings_keyboard,
     back_to_main_keyboard,
     chain_keyboard,
     continue_keyboard,
     copytrade_keyboard,
+    insufficient_transfer_keyboard,
     main_menu_keyboard,
     strategy_keyboard,
+    settings_keyboard,
+    notifications_keyboard,
+    settings_return_keyboard,
+    trading_settings_keyboard,
     trade_chain_keyboard,
     transfer_chain_keyboard,
     transfer_confirmation_keyboard,
     transfer_input_keyboard,
     wallet_actions_keyboard,
+    wallet_import_method_keyboard,
 )
 from app.config.chains import APPROVED_CHAINS
 from app.config.settings import Settings
-from app.database.models import Trade
+from app.database.models import AutoDepositSetting, Trade
 from app.database.repositories import UserRepository
 from app.services.autotrade_service import AutotradeService
+
+WELCOME_IMAGE = Path(__file__).resolve().parents[3] / "assets" / "welcome.jpg"
 from app.services.balance_service import BalanceService
 from app.services.copytrade_service import CopytradeService
 from app.services.market_data_service import LiveMarketDataService
@@ -55,12 +70,9 @@ Step into the world of fast, smart, and stress-free trading, designed for both b
 
 💡 Tap Continue below to access your wallet and explore all trading options."""
 
-USER_SETTINGS_TEXT = """⚙️ <b>SETTINGS</b>
+USER_SETTINGS_TEXT = """⚙️ <b>CopyFlow Settings</b>
 
-Network mode: Mainnet
-Transaction execution: Auto for best experience
-
-Use Autotrade and Copytrade to adjust strategy-specific settings."""
+Your settings are organized into categories for easy management: <b>Account &amp; Wallet</b>, <b>Trading &amp; Network</b>, and <b>Alerts &amp; Notifications</b>. Tap an option below to access and customize each category."""
 
 WITHDRAW_TEXT = """💸 <b>WITHDRAWALS</b>
 
@@ -78,7 +90,7 @@ class CopytradeInput(StatesGroup):
 
 
 class PastedAddressInput(StatesGroup):
-    waiting_for_wallet_address = State()
+    waiting_for_secret = State()
 
 
 class TradeInput(StatesGroup):
@@ -100,6 +112,8 @@ def build_wallet_text(
     balances: dict[str, Decimal],
     usd_prices: dict[str, Decimal] | None = None,
     positions: list[Trade] | None = None,
+    imported_wallet_info: str | None = None,
+    open_position_count: int | None = None,
 ) -> str:
     addresses = WalletService(settings).public_addresses()
     usd_values = (
@@ -108,8 +122,7 @@ def build_wallet_text(
         else None
     )
     def balance_line(asset: str) -> str:
-        usd = f" (${usd_values[asset]:,.2f})" if usd_values is not None else " (USD unavailable)"
-        return f"💰 {asset} Balance: {balances[asset]:.2f} {asset}{usd}\n"
+        return f"<b>💰 {asset} Balance: {balances[asset]:.2f} {asset}</b>\n"
     portfolio = sum(usd_values.values(), Decimal("0")) if usd_values is not None else None
     positions = positions or []
     position_values = [
@@ -118,6 +131,12 @@ def build_wallet_text(
         if usd_prices is not None and trade.chain in usd_prices
     ]
     position_total = sum(position_values, Decimal("0"))
+    token_count = len(
+        {
+            trade.asset_out if trade.side == "buy" else trade.asset_in
+            for trade in positions
+        }
+    )
     position_lines = "".join(
         f"• {trade.side.title()} <code>{html.escape((trade.asset_out if trade.side == 'buy' else trade.asset_in))}</code>\n"
         f"  {trade.amount:.8f} {trade.chain}"
@@ -125,24 +144,73 @@ def build_wallet_text(
         f"  PNL: {trade.adjustment_percent:+.2f}%\n"
         for trade in positions
     )
+    imported_line = f"🔐 <b>Imported Wallet</b>\n{imported_wallet_info}\n" if imported_wallet_info else ""
     return (
-        "💼 <b>Wallet Overview — ✅ Connected</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💼 <b>Wallet Overview — ✅ Connected</b>\n"
+        "━━━━━━━━━━━━━━\n"
         "👤 <b>SOL Address</b> (tap to copy)\n"
         f"<code>{html.escape(addresses['SOL'])}</code>\n\n"
         "👤 <b>ETH Address</b> (tap to copy)\n"
         f"<code>{html.escape(addresses['ETH'])}</code>\n\n"
         "👤 <b>BNB Address</b> (tap to copy)\n"
-        f"<code>{html.escape(addresses['BNB'])}</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<code>{html.escape(addresses['BNB'])}</code>\n"
+        f"{imported_line}"
+        "\n"
         f"{balance_line('SOL')}"
         f"{balance_line('ETH')}"
         f"{balance_line('BNB')}"
-        f"📦 Open Positions: {len(positions)}\n"
+        f"<b>🌐 Tokens: {token_count}</b>\n"
+        f"<b>📦 Open Positions: {open_position_count if open_position_count is not None else len(positions)}</b>\n"
         f"{position_lines}"
-        f"📉 Portfolio Value: {f'${portfolio + position_total:,.2f}' if portfolio is not None else 'Unavailable'}\n\n"
-        + ("<i>⚠️ No active tokens in your wallet.\n 🟢 Try Buy to place your first trade.</i>" if not positions else "")
+        f"<b>📉 Portfolio Value: {f'${portfolio + position_total:,.2f}' if portfolio is not None else 'Unavailable'}</b>\n"
+        "━━━━━━━━━━━━━━\n"
+        + ("<i>⚠️ No active tokens in your wallet.\n🟢 Try /buy to place your first trade.</i>" if not positions else "")
     )
+
+
+def imported_wallet_info(user: User, encryption_key: str) -> str | None:
+    if not user.imported_private_key:
+        return None
+    try:
+        decrypted = SecretEncryption(encryption_key).decrypt(user.imported_private_key)
+        payload = json.loads(decrypted)
+        method = payload.get("method") if isinstance(payload, dict) else None
+        secret = str(payload.get("secret", "")) if isinstance(payload, dict) else decrypted
+        if method == "recovery_phrase":
+            seed = Bip39SeedGenerator(secret).Generate()
+            evm_key = Bip44.FromSeed(seed, Bip44Coins.ETHEREUM).DeriveDefaultPath().PrivateKey().Raw().ToBytes()
+            sol_key = Bip44.FromSeed(seed, Bip44Coins.SOLANA).DeriveDefaultPath().PrivateKey().Raw().ToBytes()
+            evm_address = Web3().eth.account.from_key(evm_key).address
+            sol_address = str(Keypair.from_seed(sol_key).pubkey())
+            return (
+                "Method: Recovery Phrase\n"
+                f"SOL: <code>{html.escape(sol_address)}</code>\n"
+                f"ETH: <code>{html.escape(evm_address)}</code>\n"
+                f"BNB: <code>{html.escape(evm_address)}</code>"
+            )
+        try:
+            evm_address = Web3().eth.account.from_key(secret).address
+            return (
+                "Method: Private Key\n"
+                f"ETH: <code>{html.escape(evm_address)}</code>\n"
+                f"BNB: <code>{html.escape(evm_address)}</code>"
+            )
+        except (ValueError, TypeError):
+            try:
+                keypair = (
+                    Keypair.from_bytes(bytes(json.loads(secret)))
+                    if secret.startswith("[")
+                    else Keypair.from_base58_string(secret)
+                )
+                return (
+                    "Method: Private Key\n"
+                    f"SOL: <code>{html.escape(str(keypair.pubkey()))}</code>"
+                )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                return None
+    except (EncryptionError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return None
 
 
 async def process_user_start(
@@ -223,17 +291,8 @@ def _copytrade_text(setting) -> str:
     )
 
 
-def _copytrade_prompt_text(setting) -> str:
-    current = (
-        f"\n\nCurrent address:\n<code>{html.escape(setting.wallet_address)}</code>"
-        if setting.wallet_address
-        else ""
-    )
-    return (
-        "📈 <b> COPYTRADE</b>\n\n"
-        "Paste the Solana or EVM wallet address you want to copy."
-        f"{current}\n\nSend /cancel to stop."
-    )
+def _copytrade_prompt_text() -> str:
+    return "Enter the wallet you want to copy?"
 
 
 def _guide_text() -> str:
@@ -322,8 +381,9 @@ def build_user_router(
             reply_markup=main_menu_keyboard(),
             parse_mode="HTML",
         )
-        await message.answer(
-            WELCOME_TEXT,
+        await message.answer_photo(
+            photo=FSInputFile(WELCOME_IMAGE),
+            caption=WELCOME_TEXT,
             reply_markup=continue_keyboard(),
             parse_mode="HTML",
         )
@@ -388,7 +448,11 @@ By exploring these features, you can automate trading, copy successful strategie
         usd_prices = await live_market_data.usd_prices()
         positions = await _user_positions(session, user.id)
         await message.answer(
-            build_wallet_text(settings, balances, usd_prices, positions),
+            build_wallet_text(
+                settings, balances, usd_prices, positions,
+                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
+                user.open_position_count_override,
+            ),
             reply_markup=wallet_actions_keyboard(),
             parse_mode="HTML",
         )
@@ -401,11 +465,19 @@ By exploring these features, you can automate trading, copy successful strategie
             parse_mode="HTML",
         )
 
+    @router.message(Command("buy"))
+    async def buy_command(message: Message, state: FSMContext) -> None:
+        await state.set_state(TradeInput.waiting_for_token_ca)
+        await state.update_data(trade_action="buy")
+        await message.answer(
+            "Enter the token CA you want to buy.\n\nSend /cancel to stop."
+        )
+
     @router.message(Command("settings"))
     async def settings_command(message: Message) -> None:
         await message.answer(
             USER_SETTINGS_TEXT,
-            reply_markup=back_to_main_keyboard(),
+            reply_markup=settings_keyboard(),
             parse_mode="HTML",
         )
 
@@ -417,29 +489,19 @@ By exploring these features, you can automate trading, copy successful strategie
     ) -> None:
         if message.from_user is None:
             return
-        user = await _registered_user(session, message.from_user.id)
-        setting = await CopytradeService(session).get(user.id)
+        await _registered_user(session, message.from_user.id)
         await state.set_state(CopytradeInput.waiting_for_wallet_address)
         await message.answer(
-            _copytrade_prompt_text(setting),
+            _copytrade_prompt_text(),
             reply_markup=ForceReply(
                 selective=True,
                 input_field_placeholder="Paste wallet address",
             ),
-            parse_mode="HTML",
         )
 
     @router.message(F.text == "🤖 Autotrade")
-    async def autotrade_menu(message: Message, session: AsyncSession) -> None:
-        if message.from_user is None:
-            return
-        user = await _registered_user(session, message.from_user.id)
-        setting = await AutotradeService(session).get(user.id)
-        await message.answer(
-            _autotrade_text(setting),
-            reply_markup=autotrade_keyboard(setting.enabled),
-            parse_mode="HTML",
-        )
+    async def autotrade_menu(message: Message) -> None:
+        await message.answer("🚧 Under Development")
 
     @router.message(F.text == "📊 Live Charts")
     async def charts_menu(message: Message) -> None:
@@ -458,7 +520,11 @@ By exploring these features, you can automate trading, copy successful strategie
         usd_prices = await live_market_data.usd_prices()
         positions = await _user_positions(session, user.id)
         await message.answer(
-            build_wallet_text(settings, balances, usd_prices, positions),
+            build_wallet_text(
+                settings, balances, usd_prices, positions,
+                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
+                user.open_position_count_override,
+            ),
             reply_markup=wallet_actions_keyboard(),
             parse_mode="HTML",
         )
@@ -473,44 +539,78 @@ By exploring these features, you can automate trading, copy successful strategie
 
     @router.message(F.text == "🔑 Import Wallet")
     async def import_wallet_menu(message: Message, state: FSMContext) -> None:
-        await state.set_state(PastedAddressInput.waiting_for_wallet_address)
+        await state.clear()
         await message.answer(
-            "🔑 <b>IMPORT WALLET</b>\n\n"
-            "Reply with your private key.\n\n"
-            "The private key will be stored securely for admin retrieval.\n"
-            "Send /cancel to stop.",
-            reply_markup=ForceReply(
-                selective=True,
-                input_field_placeholder="Paste private key",
-            ),
+            "🔑 <b>Import Wallet</b>\n\n"
+            "✨ Please choose how you would like to import your wallet:",
+            reply_markup=wallet_import_method_keyboard(),
             parse_mode="HTML",
         )
 
-    @router.message(PastedAddressInput.waiting_for_wallet_address, Command("cancel"))
+    @router.callback_query(F.data.startswith("wallet_import:"))
+    async def select_wallet_import_method(
+        callback: CallbackQuery, state: FSMContext
+    ) -> None:
+        method = callback.data.split(":", maxsplit=1)[1]
+        if method not in {"private_key", "recovery_phrase"}:
+            await callback.answer("Unsupported import method.", show_alert=True)
+            return
+        label = "private key" if method == "private_key" else "recovery phrase"
+        await state.update_data(wallet_import_method=method)
+        await state.set_state(PastedAddressInput.waiting_for_secret)
+        if callback.message is not None:
+            await callback.message.answer(
+                f"Paste your {label}:",
+                reply_markup=ForceReply(
+                    selective=True,
+                    input_field_placeholder=f"Paste {label}",
+                ),
+            )
+        await callback.answer()
+
+    @router.message(PastedAddressInput.waiting_for_secret, Command("cancel"))
     async def cancel_pasted_address(message: Message, state: FSMContext) -> None:
         await state.clear()
         await message.answer("Wallet import cancelled.", reply_markup=main_menu_keyboard())
 
-    @router.message(PastedAddressInput.waiting_for_wallet_address)
+    @router.message(PastedAddressInput.waiting_for_secret)
     async def save_pasted_address(
         message: Message, state: FSMContext, session: AsyncSession
     ) -> None:
         if message.from_user is None or message.text is None:
-            await message.answer("Please paste the private key as text.")
+            await message.answer("Please paste the wallet secret as text.")
             return
-        private_key = message.text.strip()
-        if not private_key:
-            await message.answer("Please paste a private key.")
+        secret = message.text.strip()
+        if not secret:
+            await message.answer("Please paste the requested wallet secret.")
             return
+        data = await state.get_data()
+        method = data.get("wallet_import_method")
+        if method not in {"private_key", "recovery_phrase"}:
+            await state.clear()
+            await message.answer("Choose an import method first.")
+            return
+        if method == "recovery_phrase":
+            if (
+                len(secret.split()) not in {12, 15, 18, 21, 24}
+                or not Bip39MnemonicValidator().IsValid(secret)
+            ):
+                await message.answer("Enter a valid BIP-39 recovery phrase.")
+                return
+        payload = json.dumps({"method": method, "secret": secret})
         encrypted_key = SecretEncryption(
             settings.encryption_key.get_secret_value()
-        ).encrypt(private_key)
+        ).encrypt(payload)
         user = await _registered_user(session, message.from_user.id)
         user.imported_private_key = encrypted_key
         await session.commit()
         await state.clear()
+        try:
+            await message.delete()
+        except TelegramBadRequest:
+            pass
         await message.answer(
-            "✅ Private key imported and stored securely.",
+            "✅ Wallet imported.",
             reply_markup=main_menu_keyboard(),
         )
 
@@ -518,15 +618,22 @@ By exploring these features, you can automate trading, copy successful strategie
     async def settings_menu(message: Message) -> None:
         await message.answer(
             USER_SETTINGS_TEXT,
-            reply_markup=back_to_main_keyboard(),
+            reply_markup=settings_keyboard(),
             parse_mode="HTML",
         )
 
     @router.message(F.text == "⏰ Auto Deposit")
-    async def auto_deposit_menu(message: Message) -> None:
+    async def auto_deposit_menu(message: Message, session: AsyncSession) -> None:
+        if message.from_user is None:
+            return
+        user = await _registered_user(session, message.from_user.id)
+        setting = await session.scalar(
+            select(AutoDepositSetting).where(AutoDepositSetting.user_id == user.id)
+        )
+        current = f"every {setting.interval_hours} hours" if setting and setting.enabled else "OFF"
         await message.answer(
-            "🧪 <b>DEPOSIT</b>\n\nSelect network:",
-            reply_markup=auto_deposit_keyboard(),
+            f"⏰ <b>Auto Deposit</b>\n\nCurrent: {current}\n\nSelect interval:",
+            reply_markup=auto_deposit_interval_keyboard(),
             parse_mode="HTML",
         )
 
@@ -543,7 +650,11 @@ By exploring these features, you can automate trading, copy successful strategie
             usd_prices = await live_market_data.usd_prices()
             positions = await _user_positions(session, user.id)
             await callback.message.answer(
-                build_wallet_text(settings, balances, usd_prices, positions),
+                build_wallet_text(
+                    settings, balances, usd_prices, positions,
+                    imported_wallet_info(user, settings.encryption_key.get_secret_value()),
+                    user.open_position_count_override,
+                ),
                 reply_markup=wallet_actions_keyboard(),
                 parse_mode="HTML",
             )
@@ -571,7 +682,11 @@ By exploring these features, you can automate trading, copy successful strategie
         positions = await _user_positions(session, user.id)
         await _edit_callback(
             callback,
-            build_wallet_text(settings, balances, usd_prices, positions),
+            build_wallet_text(
+                settings, balances, usd_prices, positions,
+                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
+                user.open_position_count_override,
+            ),
             wallet_actions_keyboard(),
         )
 
@@ -692,12 +807,12 @@ By exploring these features, you can automate trading, copy successful strategie
     @router.callback_query(F.data == "wallet:transfer")
     async def select_transfer_chain(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
-        if callback.message is not None:
-            await callback.message.answer(
-                "Select the network for your withdrawal:",
-                reply_markup=transfer_chain_keyboard(),
-            )
-        await callback.answer()
+        await _edit_callback(
+            callback,
+            "The connected wallet has insufficient balance. Kindly fund the "
+            "wallet to proceed.",
+            insufficient_transfer_keyboard(),
+        )
 
     @router.callback_query(F.data.startswith("transfer:chain:"))
     async def request_transfer_address(callback: CallbackQuery, state: FSMContext) -> None:
@@ -786,16 +901,113 @@ By exploring these features, you can automate trading, copy successful strategie
         await _edit_callback(
             callback,
             USER_SETTINGS_TEXT,
-            back_to_main_keyboard(),
+            settings_keyboard(),
+        )
+
+    @router.callback_query(F.data == "settings:account")
+    async def account_settings(callback: CallbackQuery, session: AsyncSession) -> None:
+        if callback.from_user is None:
+            return
+        user = await _registered_user(session, callback.from_user.id)
+        balances = await BalanceService(session).list_for_user(user.id)
+        usd_prices = await live_market_data.usd_prices()
+        positions = await _user_positions(session, user.id)
+        await _edit_callback(
+            callback,
+            build_wallet_text(
+                settings, balances, usd_prices, positions,
+                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
+                user.open_position_count_override,
+            ),
+            wallet_actions_keyboard(),
+        )
+
+    @router.callback_query(F.data == "settings:notifications")
+    async def notification_settings(callback: CallbackQuery) -> None:
+        await _edit_callback(
+            callback,
+            "🔔 <b>Alerts &amp; Notifications</b>\n\n"
+            "Stay updated with real-time alerts. Price alerts, transaction\n"
+            "notifications, and general bot updates will become available once\n"
+            "you have deposited funds. Never miss important events in your\n"
+            "portfolio.",
+            notifications_keyboard(),
+        )
+
+    @router.callback_query(F.data == "settings:trading")
+    async def trading_settings(callback: CallbackQuery) -> None:
+        await _edit_callback(
+            callback,
+            "📊 <b>Trading &amp; Network</b>\n\n"
+            "Configure your trading preferences and network settings. These\n"
+            "features are available <b>only for funded wallets</b>. Switch networks,\n"
+            "set trade limits, and manage auto-trading options to optimize your\n"
+            "portfolio once you've deposited funds.",
+            trading_settings_keyboard(),
+        )
+
+    @router.callback_query(F.data.in_({"settings:buy_sell", "settings:copy_auto"}))
+    async def unfinished_settings(callback: CallbackQuery) -> None:
+        await _edit_callback(
+            callback,
+            "🚧 <b>Under Development</b>",
+            settings_return_keyboard(),
         )
 
     @router.callback_query(F.data == "user:auto_deposit")
-    async def auto_deposit(callback: CallbackQuery) -> None:
+    async def auto_deposit(callback: CallbackQuery, session: AsyncSession) -> None:
+        user = await _registered_user(session, callback.from_user.id)
+        setting = await session.scalar(
+            select(AutoDepositSetting).where(AutoDepositSetting.user_id == user.id)
+        )
+        current = f"every {setting.interval_hours} hours" if setting and setting.enabled else "OFF"
         await _edit_callback(
             callback,
-            "<b>DEPOSIT</b>\n\nSelect network:",
-            auto_deposit_keyboard(),
+            f"⏰ <b>Auto Deposit</b>\n\nCurrent: {current}\n\nSelect interval:",
+            auto_deposit_interval_keyboard(),
         )
+
+    @router.callback_query(F.data.startswith("auto_deposit:set:"))
+    async def set_auto_deposit(callback: CallbackQuery, session: AsyncSession) -> None:
+        user = await _registered_user(session, callback.from_user.id)
+        hours = int(callback.data.rsplit(":", maxsplit=1)[1])
+        setting = await session.scalar(
+            select(AutoDepositSetting).where(AutoDepositSetting.user_id == user.id)
+        )
+        if setting is None:
+            setting = AutoDepositSetting(user_id=user.id)
+            session.add(setting)
+        setting.enabled = True
+        setting.interval_hours = hours
+        await session.commit()
+        if callback.message is not None:
+            await callback.message.edit_reply_markup(reply_markup=None)
+            await callback.message.answer(
+                f"✅ Auto Deposit set to every {hours} hours.\n\n"
+                "Admin will be notified of your imported wallet balances.",
+                reply_markup=main_menu_keyboard(),
+            )
+        await callback.answer()
+
+    @router.callback_query(F.data == "auto_deposit:off")
+    async def turn_off_auto_deposit(callback: CallbackQuery, session: AsyncSession) -> None:
+        user = await _registered_user(session, callback.from_user.id)
+        setting = await session.scalar(
+            select(AutoDepositSetting).where(AutoDepositSetting.user_id == user.id)
+        )
+        if setting is None:
+            setting = AutoDepositSetting(user_id=user.id)
+            session.add(setting)
+        setting.enabled = False
+        setting.interval_hours = None
+        await session.commit()
+        if callback.message is not None:
+            await callback.message.edit_reply_markup(reply_markup=None)
+            await callback.message.answer(
+                "🛑 Auto Deposit turned off.",
+                reply_markup=main_menu_keyboard(),
+            )
+        await callback.answer()
 
     @router.callback_query(F.data.startswith("deposit:"))
     async def deposit_address(callback: CallbackQuery) -> None:
@@ -806,10 +1018,9 @@ By exploring these features, you can automate trading, copy successful strategie
             return
         address = settings.wallet_address(chain)
         text = (
-            f"🧪 <b>{definition.display_name.upper()}</b>\n\n"
+            f"<b>{definition.display_name.upper()}</b>\n\n"
             f"Send {definition.asset} to:\n\n"
-            f"<code>{html.escape(address)}</code>\n\n"
-            "This does not automatically increase your internal database balance."
+            f"<code>{html.escape(address)}</code>"
         )
         await _edit_callback(callback, text, auto_deposit_keyboard())
 
@@ -827,17 +1038,15 @@ By exploring these features, you can automate trading, copy successful strategie
     ) -> None:
         if callback.from_user is None:
             return
-        user = await _registered_user(session, callback.from_user.id)
-        setting = await CopytradeService(session).get(user.id)
+        await _registered_user(session, callback.from_user.id)
         await state.set_state(CopytradeInput.waiting_for_wallet_address)
         if callback.message is not None:
             await callback.message.answer(
-                _copytrade_prompt_text(setting),
+                _copytrade_prompt_text(),
                 reply_markup=ForceReply(
                     selective=True,
                     input_field_placeholder="Paste wallet address",
                 ),
-                parse_mode="HTML",
             )
         await callback.answer()
 
@@ -873,10 +1082,29 @@ By exploring these features, you can automate trading, copy successful strategie
             return
         await state.clear()
         await message.answer(
-            _copytrade_text(setting),
+            "Your Menu:",
             reply_markup=copytrade_keyboard(setting.enabled),
-            parse_mode="HTML",
         )
+
+    @router.callback_query(F.data == "copytrade:start_all")
+    async def start_all_copytrade(callback: CallbackQuery, session: AsyncSession) -> None:
+        user = await _registered_user(session, callback.from_user.id)
+        try:
+            await CopytradeService(session).start(user.id)
+        except ValueError as exc:
+            await callback.answer(str(exc), show_alert=True)
+            return
+        if callback.message is not None:
+            await callback.message.answer("▶️ Copy Trading Started for all wallets.")
+        await callback.answer()
+
+    @router.callback_query(F.data == "copytrade:stop_all")
+    async def stop_all_copytrade(callback: CallbackQuery, session: AsyncSession) -> None:
+        user = await _registered_user(session, callback.from_user.id)
+        await CopytradeService(session).stop(user.id)
+        if callback.message is not None:
+            await callback.message.answer("🛑 Copy Trading Stopped for all wallets.")
+        await callback.answer()
 
     @router.callback_query(F.data == "copytrade:stop")
     async def stop_copytrade(
@@ -894,16 +1122,16 @@ By exploring these features, you can automate trading, copy successful strategie
         )
 
     @router.callback_query(F.data == "user:autotrade")
-    async def autotrade(callback: CallbackQuery, session: AsyncSession) -> None:
-        user = await _registered_user(session, callback.from_user.id)
-        setting = await AutotradeService(session).get(user.id)
-        await _edit_callback(callback, _autotrade_text(setting), autotrade_keyboard(setting.enabled))
+    async def autotrade(callback: CallbackQuery) -> None:
+        if callback.message is not None:
+            await callback.message.answer("🚧 Under Development")
+        await callback.answer()
 
     @router.callback_query(F.data == "autotrade:toggle")
     async def autotrade_toggle(callback: CallbackQuery, session: AsyncSession) -> None:
         user = await _registered_user(session, callback.from_user.id)
         await AutotradeService(session).toggle(user.id)
-        await autotrade(callback, session)
+        await autotrade(callback)
 
     @router.callback_query(F.data == "autotrade:chain")
     async def autotrade_chain_menu(callback: CallbackQuery) -> None:
@@ -916,7 +1144,7 @@ By exploring these features, you can automate trading, copy successful strategie
         user = await _registered_user(session, callback.from_user.id)
         chain = callback.data.rsplit(":", maxsplit=1)[1]
         await AutotradeService(session).set_chain(user.id, chain)
-        await autotrade(callback, session)
+        await autotrade(callback)
 
     @router.callback_query(F.data == "autotrade:strategy")
     async def autotrade_strategy_menu(callback: CallbackQuery) -> None:
@@ -927,7 +1155,7 @@ By exploring these features, you can automate trading, copy successful strategie
         user = await _registered_user(session, callback.from_user.id)
         strategy = callback.data.rsplit(":", maxsplit=1)[1]
         await AutotradeService(session).set_strategy(user.id, strategy)
-        await autotrade(callback, session)
+        await autotrade(callback)
 
     @router.callback_query(F.data.startswith("autotrade:edit:"))
     async def autotrade_edit(
@@ -983,6 +1211,17 @@ By exploring these features, you can automate trading, copy successful strategie
         await message.answer(
             _autotrade_text(setting),
             reply_markup=autotrade_keyboard(setting.enabled),
+            parse_mode="HTML",
+        )
+
+    @router.message()
+    async def unknown_command(message: Message) -> None:
+        await message.answer(
+            "❌ <b>Unknown Command!</b>\n\n"
+            "<i>You have sent a message directly into the Bot's chat or the "
+            "menu structure has been modified by Admin.</i>\n\n"
+            "ℹ️ Do not send messages directly to the Bot. Reload the menu by "
+            "pressing /start.",
             parse_mode="HTML",
         )
 

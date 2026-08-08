@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, String
+from sqlalchemy import BigInteger, Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -17,6 +17,7 @@ class User(TimestampMixin, Base):
     last_name: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     imported_private_key: Mapped[str | None] = mapped_column(String(1024))
+    open_position_count_override: Mapped[int | None] = mapped_column(Integer)
 
     balances: Mapped[list["Balance"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

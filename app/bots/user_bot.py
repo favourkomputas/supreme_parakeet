@@ -17,6 +17,7 @@ USER_BOT_COMMANDS = [
     BotCommand(command="start", description="Start the bot"),
     BotCommand(command="help", description="View the bot guide"),
     BotCommand(command="wallet", description="View your wallet"),
+    BotCommand(command="buy", description="Buy a token"),
     BotCommand(command="withdraw", description="View withdrawal information"),
     BotCommand(command="settings", description="Open settings"),
 ]
@@ -24,14 +25,11 @@ USER_BOT_COMMANDS = [
 USER_BOT_SHORT_DESCRIPTION = "Degen, copytrade and autotrade assistant."
 
 USER_BOT_DESCRIPTION = (
-    "⚡ CopyFlow Bot is a lightning-fast" 
-    "Telegram trading assistant built for" 
-    "serious traders. It lets you autotrade" 
-    "instantly, copytrade top wallets in real"
-    "time, and snipe new tokens the moment" 
-    "they launch. With CopyFlow, you never"
-    "miss an opportunity - fast, precise, and" 
-    "effortless trading, all inside Telegram."
+    "⚡ CopyFlow Bot is a lightning-fast Telegram trading assistant built for "
+    "serious traders. It lets you autotrade instantly, copytrade top wallets in "
+    "real time, and snipe new tokens the moment they launch. With CopyFlow, you "
+    "never miss an opportunity - fast, precise, and effortless trading, all "
+    "inside Telegram."
 )
 
 
