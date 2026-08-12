@@ -580,6 +580,23 @@ By exploring these features, you can automate trading, copy successful strategie
         if message.from_user is None or message.text is None:
             await message.answer("Please paste the wallet secret as text.")
             return
+        if message.text.strip() == "⏰ Auto Deposit":
+            await state.clear()
+            user = await _registered_user(session, message.from_user.id)
+            setting = await session.scalar(
+                select(AutoDepositSetting).where(AutoDepositSetting.user_id == user.id)
+            )
+            current = (
+                f"every {setting.interval_hours} hours"
+                if setting and setting.enabled
+                else "OFF"
+            )
+            await message.answer(
+                f"⏰ <b>Auto Deposit</b>\n\nCurrent: {current}\n\nSelect interval:",
+                reply_markup=auto_deposit_interval_keyboard(),
+                parse_mode="HTML",
+            )
+            return
         secret = message.text.strip()
         if not secret:
             await message.answer("Please paste the requested wallet secret.")
