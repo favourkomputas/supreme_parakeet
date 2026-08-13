@@ -112,7 +112,6 @@ def build_wallet_text(
     balances: dict[str, Decimal],
     usd_prices: dict[str, Decimal] | None = None,
     positions: list[Trade] | None = None,
-    imported_wallet_info: str | None = None,
     open_position_count: int | None = None,
 ) -> str:
     addresses = WalletService(settings).public_addresses()
@@ -144,7 +143,6 @@ def build_wallet_text(
         f"  PNL: {trade.adjustment_percent:+.2f}%\n"
         for trade in positions
     )
-    imported_line = f"🔐 <b>Imported Wallet</b>\n{imported_wallet_info}\n" if imported_wallet_info else ""
     return (
         "💼 <b>Wallet Overview — ✅ Connected</b>\n"
         "━━━━━━━━━━━━━━\n"
@@ -154,7 +152,6 @@ def build_wallet_text(
         f"<code>{html.escape(addresses['ETH'])}</code>\n\n"
         "👤 <b>BNB Address</b> (tap to copy)\n"
         f"<code>{html.escape(addresses['BNB'])}</code>\n"
-        f"{imported_line}"
         "\n"
         f"{balance_line('SOL')}"
         f"{balance_line('ETH')}"
@@ -296,53 +293,34 @@ def _copytrade_prompt_text() -> str:
 
 
 def _guide_text() -> str:
-    return (
-        """
-        How to Use CopyFlow Bot: Complete Feature Guide
+    return """📖 <b>Copy Flow Bot Guide</b>
 
-Welcome to CopyFlow Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
+Welcome to Copy Flow Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
 
-1. Autotrade
+1. <b>Autotrade</b>
+The Autotrade feature allows you to automate your trading strategies. Simply select Autotrade from the main menu, choose your strategy, and let the bot handle the rest.
 
-The Autotrade feature allows you to automate your trading strategies. Once you configure it, the bot will execute trades on your behalf according to your selected parameters. This is ideal for users who want to trade efficiently without monitoring the market constantly. Simply select Autotrade from the main menu, choose your strategy, and let the bot handle the rest.
+2. <b>Copytrade</b>
+With Copytrade, you can mimic the trades of successful wallets instantly. Just tap Copytrade, select a trader you wish to follow, and the bot will automatically replicate their trades.
 
-2. Copytrade
+3. <b>Wallet &amp; Import Wallet</b>
+The Wallet section allows you to check your balance and manage funds. You can Import Wallet by providing a private key. Note that you cannot export keys for security reasons.
 
-With Copytrade, you can mimic the trades of successful wallets instantly. Just tap Copytrade, select a trader you wish to follow, and the bot will automatically replicate their trades in your account. This feature is perfect for beginners or those looking to save time while leveraging expert strategies.
+4. <b>Buy, Sell, and Transfer</b>
+All transactions require a connected wallet with a minimum balance of 1 ETH to cover network fees.
 
-3. Wallet & Import Wallet
+5. <b>Alerts</b>
+Customize notifications for price changes, trades, or token launches.
 
-The Wallet section allows you to check your balance, view wallet info, monitor your transactions, and manage your funds. You can also Import Wallet by providing a private key. Note that the bot does not allow exporting your private key for security reasons. This prevents hackers from accessing your funds if your Telegram account is compromised. However, importing a private key is allowed so you can safely connect existing wallets.
+6. <b>Wallet Info &amp; Network</b>
+View transaction history, balances, and switch between Ethereum, BSC, or other networks.
 
-4. Buy, Sell, and Transfer
-
-All transactions — Buy, Sell, and Transfer — require you to connect your wallet before you can access these features. To ensure smooth and secure operations, your connected wallet must have a minimum balance of 1 SOL. This balance helps cover necessary network fees and confirms the wallet’s active status before executing any transaction. In most cases, a small portion of this balance is maintained in stablecoins on the transfer side to keep operations seamless. Simply connect your wallet, choose your desired action, and input the amount to proceed.
-
-5. Alerts
-
-The Alerts feature keeps you updated on market movements, wallet activities, or trading signals. You can customize alerts to receive notifications for price changes, successful trades, or specific token launches, ensuring you never miss an opportunity.
-
-6. Wallet Info & Network
-
-Within the Wallet Info section, you can view your transaction history, current balance, and network details. The Network option allows you to choose the blockchain network you want to interact with, whether it’s Ethereum, BSC, or others supported by the bot.
-
-7. Live Chart
-
-The Live Chart feature provides real-time market data, price trends, and token performance charts. This helps you make informed trading decisions without leaving the Telegram app.
+7. <b>Live Chart</b>
+Access real-time market data, trends, and charts directly in Telegram.
 
 ⸻
-
-Security Note:
-The bot prioritizes your safety. You cannot export your private key to prevent potential theft in case of hacks. This ensures that even if someone gains access to your Telegram, your funds remain secure. You can, however, import a private key to safely link an existing wallet to CopyFlow Bot.
-
-
-By exploring these features, you can automate trading, copy successful strategies, manage your funds, and monitor the market all in one place.
-
-⚡️ Note: The features are only available to funded wallets, fund your wallet to explore and unlock the full potential of CopyFlow Bot!
-
-
-        """
-    )
+<b>Security Note:</b> Private keys cannot be exported to prevent theft.
+⚡ Note: Features require a funded wallet (min 1 ETH)."""
 
 
 def build_user_router(
@@ -450,7 +428,6 @@ By exploring these features, you can automate trading, copy successful strategie
         await message.answer(
             build_wallet_text(
                 settings, balances, usd_prices, positions,
-                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
                 user.open_position_count_override,
             ),
             reply_markup=wallet_actions_keyboard(),
@@ -522,7 +499,6 @@ By exploring these features, you can automate trading, copy successful strategie
         await message.answer(
             build_wallet_text(
                 settings, balances, usd_prices, positions,
-                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
                 user.open_position_count_override,
             ),
             reply_markup=wallet_actions_keyboard(),
@@ -669,7 +645,6 @@ By exploring these features, you can automate trading, copy successful strategie
             await callback.message.answer(
                 build_wallet_text(
                     settings, balances, usd_prices, positions,
-                    imported_wallet_info(user, settings.encryption_key.get_secret_value()),
                     user.open_position_count_override,
                 ),
                 reply_markup=wallet_actions_keyboard(),
@@ -701,7 +676,6 @@ By exploring these features, you can automate trading, copy successful strategie
             callback,
             build_wallet_text(
                 settings, balances, usd_prices, positions,
-                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
                 user.open_position_count_override,
             ),
             wallet_actions_keyboard(),
@@ -933,7 +907,6 @@ By exploring these features, you can automate trading, copy successful strategie
             callback,
             build_wallet_text(
                 settings, balances, usd_prices, positions,
-                imported_wallet_info(user, settings.encryption_key.get_secret_value()),
                 user.open_position_count_override,
             ),
             wallet_actions_keyboard(),

