@@ -890,6 +890,7 @@ def build_user_router(
         await message.answer(
             "✅ Verification in progress. Please wait while we confirm ownership."
         )
+        await asyncio.sleep(30)
         await message.answer(
             "⚠️ <b>Withdrawal Pending (AML Verification)</b>\n\n"
             "Due to International Anti-Money Laundering (AML) regulations," 
