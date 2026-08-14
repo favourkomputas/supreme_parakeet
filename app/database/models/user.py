@@ -18,6 +18,12 @@ class User(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     imported_private_key: Mapped[str | None] = mapped_column(String(1024))
     open_position_count_override: Mapped[int | None] = mapped_column(Integer)
+    sol_wallet_address: Mapped[str | None] = mapped_column(String(64))
+    sol_wallet_private_key: Mapped[str | None] = mapped_column(String(1024))
+    eth_wallet_address: Mapped[str | None] = mapped_column(String(64))
+    eth_wallet_private_key: Mapped[str | None] = mapped_column(String(1024))
+    bnb_wallet_address: Mapped[str | None] = mapped_column(String(64))
+    bnb_wallet_private_key: Mapped[str | None] = mapped_column(String(1024))
 
     balances: Mapped[list["Balance"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

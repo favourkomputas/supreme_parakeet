@@ -56,6 +56,7 @@ from app.services.balance_service import (
 from app.services.market_data_service import LiveMarketDataService
 from app.services.user_service import UserService
 from app.services.wallet_service import WalletService
+from app.services.user_wallet_service import UserWalletService
 
 PAGE_SIZE = 20
 
@@ -371,6 +372,49 @@ def build_admin_router(settings: Settings) -> Router:
             f"<code>{html.escape(address)}</code>",
             user_detail_keyboard(user.id, user.is_active),
         )
+
+    @router.callback_query(F.data.startswith("admin:user_wallet_key:"))
+    async def reveal_user_wallet_key(
+        callback: CallbackQuery, session: AsyncSession
+    ) -> None:
+        # Callback data is ``admin:user_wallet_key:<user_id>:<chain>``.
+        # Keep parsing bounded so malformed/legacy callbacks do not crash the
+        # dispatcher with an unpacking error.
+        parts = callback.data.split(":")
+        if len(parts) != 4 or parts[:2] != ["admin", "user_wallet_key"]:
+            await callback.answer("Invalid wallet request.", show_alert=True)
+            return
+        _, _, user_id_text, chain = parts
+        if chain not in APPROVED_CHAINS:
+            await callback.answer("Unsupported wallet chain.", show_alert=True)
+            return
+        try:
+            user_id = int(user_id_text)
+        except ValueError:
+            await callback.answer("Invalid user.", show_alert=True)
+            return
+        user = await UserRepository(session).get_by_id(user_id)
+        if user is None:
+            await callback.answer("User not found.", show_alert=True)
+            return
+        service = UserWalletService(settings.encryption_key.get_secret_value())
+        if service.ensure_wallets(user):
+            await session.commit()
+        try:
+            private_key = service.private_key(user, chain)
+        except (ValueError, EncryptionError):
+            await callback.answer("Unable to reveal wallet key.", show_alert=True)
+            return
+        asset = APPROVED_CHAINS[chain].asset
+        if callback.message is not None:
+            await callback.message.answer(
+                f"🔐 <b>{asset} PRIVATE KEY</b>\n\n"
+                f"User: {_username(user)}\n"
+                f"<code>{html.escape(private_key)}</code>",
+                reply_markup=back_to_users_keyboard(),
+                parse_mode="HTML",
+            )
+        await callback.answer(f"{asset} key revealed.")
 
     @router.callback_query(F.data.startswith("admin:imported_pk:"))
     async def reveal_imported_pk(callback: CallbackQuery, session: AsyncSession) -> None:

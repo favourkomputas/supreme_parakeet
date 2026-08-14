@@ -63,19 +63,9 @@ def wallet_import_method_keyboard() -> InlineKeyboardMarkup:
 def settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Account/Wallet", callback_data="settings:account"
-                ),
-                InlineKeyboardButton(
-                    text="Notification/Alert", callback_data="settings:notifications"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Trading/Network", callback_data="settings:trading"
-                )
-            ],
+            [InlineKeyboardButton(text="💼 Account & Wallet", callback_data="settings:account")],
+            [InlineKeyboardButton(text="📊 Trading & Network", callback_data="settings:trading")],
+            [InlineKeyboardButton(text="🔔 Alerts & Notifications", callback_data="settings:notifications")],
         ]
     )
 
@@ -91,10 +81,7 @@ def back_to_settings_keyboard() -> InlineKeyboardMarkup:
 def notifications_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="← Back", callback_data="user:settings"),
-                InlineKeyboardButton(text="↻ Refresh", callback_data="settings:notifications"),
-            ]
+            [InlineKeyboardButton(text="← Back", callback_data="user:settings")]
         ]
     )
 
@@ -103,8 +90,6 @@ def trading_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="← Back", callback_data="user:settings")],
-            [InlineKeyboardButton(text="Buy/Sell settings", callback_data="settings:buy_sell")],
-            [InlineKeyboardButton(text="Copytrading/Autotrading settings", callback_data="settings:copy_auto")],
         ]
     )
 
@@ -126,10 +111,10 @@ def wallet_actions_keyboard() -> InlineKeyboardMarkup:
                 )
             ],
             [
-                InlineKeyboardButton(text="🛒 Buy", callback_data="wallet:buy"),
-                InlineKeyboardButton(text="💰 Sell", callback_data="wallet:sell"),
+                InlineKeyboardButton(text="🛒 Buy", callback_data="user:wallet"),
+                InlineKeyboardButton(text="💰 Sell", callback_data="user:wallet"),
             ],
-            [InlineKeyboardButton(text="🔄 Transfer", callback_data="wallet:transfer")],
+            [InlineKeyboardButton(text="🔄 Transfer", callback_data="user:wallet")],
         ]
     )
 
@@ -160,9 +145,9 @@ def trade_chain_keyboard() -> InlineKeyboardMarkup:
 def transfer_chain_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="SOL", callback_data="transfer:chain:SOL")],
-            [InlineKeyboardButton(text="BNB", callback_data="transfer:chain:BNB")],
-            [InlineKeyboardButton(text="ETH", callback_data="transfer:chain:ETH")],
+            [InlineKeyboardButton(text="🟣 Solana (SOL)", callback_data="transfer:chain:SOL")],
+            [InlineKeyboardButton(text="🟡 BNB Chain (BNB)", callback_data="transfer:chain:BNB")],
+            [InlineKeyboardButton(text="🔵 Ethereum (ETH)", callback_data="transfer:chain:ETH")],
             [InlineKeyboardButton(text="Cancel", callback_data="transfer:cancel")],
             [InlineKeyboardButton(text="🏠 Main Menu", callback_data="user:home")],
         ]

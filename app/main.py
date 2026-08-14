@@ -11,7 +11,6 @@ from app.database import close_database, initialize_database
 from app.security.logging import configure_secret_redaction
 from app.security.network_guard import NetworkGuard
 from app.security.encryption import SecretEncryption
-from app.services.wallet_service import WalletService
 
 
 def create_app(settings_override: Settings | None = None) -> FastAPI:
@@ -21,7 +20,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         settings.validate_runtime()
         configure_secret_redaction(settings)
         SecretEncryption(settings.encryption_key.get_secret_value())
-        WalletService(settings).validate_configuration()
 
         session_factory = initialize_database(settings.database_url)
         network_guard = NetworkGuard(settings)

