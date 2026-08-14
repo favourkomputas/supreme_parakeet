@@ -816,7 +816,7 @@ def build_user_router(
         await message.answer(
             "Destination set to:\n"
             f"<code>{html.escape(address)}</code>\n\n"
-            "Enter the amount you wish to withdraw:",
+            "Enter the amount you wish to withdraw: ",
             reply_markup=transfer_input_keyboard(),
             parse_mode="HTML",
         )
