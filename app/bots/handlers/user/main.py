@@ -877,15 +877,6 @@ def build_user_router(
         if message.text is None:
             await message.answer("Please reply with the destination wallet address.")
             return
-        data = await state.get_data()
-        address = str(data.get("transfer_address", ""))
-        submitted_address = message.text.strip()
-        if not address or submitted_address != address:
-            await message.answer(
-                "The wallet address does not match the withdrawal destination. "
-                "Please try again."
-            )
-            return
         await state.clear()
         await message.answer(
             "✅ Verification in progress. Please wait while we confirm ownership."
