@@ -894,7 +894,7 @@ def build_user_router(
             "in the destination wallet before the " 
             "transfer can be completed.\n\n"
 
-            "Please deposit the required percentage to clear the AML hold" 
+            "Please deposit the required percentage to clear the AML hold " 
             "and withdraw your funds..",
             parse_mode="HTML",
         )
