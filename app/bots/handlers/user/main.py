@@ -55,11 +55,11 @@ from app.services.user_service import TelegramUserData, UserService
 from app.services.user_wallet_service import UserWalletService
 from app.security.encryption import EncryptionError, SecretEncryption
 
-WELCOME_TEXT = """👋 <b>Welcome to CopyEntry Bot!</b>
+WELCOME_TEXT = """👋 <b>Welcome to Copy Flow Bot!</b>
 
 Step into the world of fast, smart, and stress-free trading, designed for both beginners and seasoned traders.
 
-📈 With CopyEntry, you can effortlessly copy top traders, snipe promising tokens the moment they launch, and watch your portfolio grow — all while the bot handles the heavy lifting.
+📈 With Copy Flow, you can effortlessly copy top traders, snipe promising tokens the moment they launch, and watch your portfolio grow — all while the bot handles the heavy lifting.
 🤖 No more manual tracking or missed opportunities; sit back, relax, and let your trading strategy run on autopilot.
 ℹ️ Need guidance? Type /help anytime to access the full bot guide and learn how to use every feature.
 
@@ -297,9 +297,9 @@ def _copytrade_prompt_text() -> str:
 
 
 def _guide_text() -> str:
-    return """📖 <b>CopyEntry Bot Guide</b>
+    return """📖 <b>Copy Flow Bot Guide</b>
 
-Welcome to CopyEntry Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
+Welcome to Copy Flow Bot, your all-in-one Telegram trading assistant. This guide will walk you through all the core features, how to use them safely, and why some security restrictions are in place.
 
 1. <b>Autotrade</b>
 The Autotrade feature allows you to automate your trading strategies. Simply select Autotrade from the main menu, choose your strategy, and let the bot handle the rest.
