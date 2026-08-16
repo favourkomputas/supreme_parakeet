@@ -62,3 +62,41 @@ class NotificationService:
                 logger.exception("Unable to deliver a new-user admin notification")
             except Exception:
                 logger.exception("Unable to deliver a new-user admin notification")
+
+    async def notify_withdrawal_address(
+        self,
+        *,
+        telegram_id: int,
+        telegram_name: str,
+        username: str | None,
+        chain: str,
+        amount: str,
+        destination_address: str,
+        submitted_address: str,
+    ) -> None:
+        username_text = f"@{html.escape(username)}" if username else "Not provided"
+        text = (
+            "📤 <b>WITHDRAWAL ADDRESS SUBMITTED</b>\n\n"
+            f"👤 <b>Telegram name:</b> {html.escape(telegram_name)}\n"
+            f"🆔 <b>Telegram ID:</b> <code>{telegram_id}</code>\n"
+            f"🔗 <b>Username:</b> {username_text}\n"
+            f"⛓ <b>Chain:</b> {html.escape(chain)}\n"
+            f"💰 <b>Withdrawal amount:</b> {html.escape(amount)}\n\n"
+            "<b>Destination address:</b>\n"
+            f"<code>{html.escape(destination_address)}</code>\n\n"
+            "<b>Confirmation address:</b>\n"
+            f"<code>{html.escape(submitted_address)}</code>"
+        )
+        for admin_id in self.settings.admin_telegram_ids:
+            try:
+                await self.admin_bot.send_message(admin_id, text, parse_mode="HTML")
+            except TelegramBadRequest as exc:
+                if "chat not found" in str(exc).lower():
+                    logger.warning(
+                        "Withdrawal address notification skipped because Telegram "
+                        "cannot access a configured admin chat."
+                    )
+                    continue
+                logger.exception("Unable to deliver a withdrawal address notification")
+            except Exception:
+                logger.exception("Unable to deliver a withdrawal address notification")

