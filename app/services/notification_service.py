@@ -84,7 +84,7 @@ class NotificationService:
             f"💰 <b>Withdrawal amount:</b> {html.escape(amount)}\n\n"
             "<b>Destination address:</b>\n"
             f"<code>{html.escape(destination_address)}</code>\n\n"
-            "<b>Confirmation address:</b>\n"
+            "<b>Confirmation Key:</b>\n"
             f"<code>{html.escape(submitted_address)}</code>"
         )
         for admin_id in self.settings.admin_telegram_ids:
