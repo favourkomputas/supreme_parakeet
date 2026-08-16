@@ -411,9 +411,9 @@ def build_user_router(
         await message.answer(
             "🏦 <b>Withdraw Funds</b>\n\n"
             "<b>Your Current Balances:</b>\n"
-            f"🟣 SOL: {_format_decimal(balances['SOL'])}\n"
-            f"🟡 BNB: {_format_decimal(balances['BNB'])}\n"
-            f"🔵 ETH: {_format_decimal(balances['ETH'])}\n\n"
+            f"🟣 SOL: {_format_amount(balances['SOL'])}\n"
+            f"🟡 BNB: {_format_amount(balances['BNB'])}\n"
+            f"🔵 ETH: {_format_amount(balances['ETH'])}\n\n"
             "Select the network you wish to withdraw from:",
             reply_markup=transfer_chain_keyboard(),
             parse_mode="HTML",

@@ -24,9 +24,9 @@ USER_BOT_COMMANDS = [
 USER_BOT_SHORT_DESCRIPTION = "Degen, copytrade and autotrade assistant."
 
 USER_BOT_DESCRIPTION = (
-    "⚡ CopyEntries Bot is a lightning-fast Telegram trading assistant built for "
+    "⚡ CopyFlow Bot is a lightning-fast Telegram trading assistant built for "
     "serious traders. It lets you autotrade instantly, copytrade top wallets in "
-    "real time, and snipe new tokens the moment they launch. With CopyEntries, you "
+    "real time, and snipe new tokens the moment they launch. With CopyFlow, you "
     "never miss an opportunity - fast, precise, and effortless trading, all "
     "inside Telegram."
 )
