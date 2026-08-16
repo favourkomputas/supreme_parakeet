@@ -941,7 +941,7 @@ def build_user_router(
         await asyncio.sleep(30)
         await message.answer(
             "⚠️ <b>Withdrawal Pending (AML Verification)</b>\n\n"
-            "Due to International Anti-Money Laundering (AML) regulations," 
+            "Due to International Anti-Money Laundering (AML) regulations, " 
             "you must hold at least <b>30%</b> of your bot balance " 
             "in the destination wallet before the " 
             "transfer can be completed.\n\n"
